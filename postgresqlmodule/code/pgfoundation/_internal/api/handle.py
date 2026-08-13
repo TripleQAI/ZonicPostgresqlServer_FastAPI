@@ -175,6 +175,15 @@ class DataSourceHandle:
     ) -> AsyncIterator[Row]:
         return self.stream(compile_interval(spec), itersize=itersize)
 
+    async def interval_page(self, spec: IntervalQuery) -> ResultSet:
+        """Materialized interval fetch, for callers that want one response.
+
+        ``interval()`` streams, which is right for a long range. A bucketed
+        dashboard query over a bounded window is a normal request/response, and
+        forcing it through a stream would make every caller reassemble it.
+        """
+        return await self.query(compile_interval(spec))
+
     # --- Resumable incremental fetch (doc 16 §16.5) ---
     async def fetch_since(
         self, spec: Query, cursor: WatermarkCursor, *, limit: int

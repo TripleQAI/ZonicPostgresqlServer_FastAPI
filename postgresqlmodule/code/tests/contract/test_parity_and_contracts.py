@@ -36,6 +36,28 @@ PAYLOADS: dict[str, dict] = {
     "procedure": {"name": "sp_customer_stats", "args": ["bob", None, None]},
     "query": {"sql": "SELECT id FROM demo_orders WHERE id = %(i)s", "params": {"i": 1}},
     "execute": {"sql": "UPDATE demo_orders SET status = %(s)s", "params": {"s": "paid"}},
+    "interval": {
+        "source": "readings",
+        "time_column": "ts",
+        "start": "2026-08-13T00:00:00Z",
+        "end": "2026-08-14T00:00:00Z",
+        "every": "15 minutes",
+        "metrics": [{"column": "amount", "func": "sum"}],
+        "group_by": ["customer"],
+    },
+    # order_by is ["id"] because the watermark reads that column off the last
+    # row, and the fake responder returns rows keyed id/customer/amount.
+    "fetch_since": {
+        "sql": "SELECT id, customer FROM demo_orders",
+        "params": {},
+        "cursor": {"order_by": ["id"]},
+        "limit": 10,
+    },
+    "execute_many": {
+        "sql": "INSERT INTO demo_orders (id) VALUES (%(id)s)",
+        "params_seq": [{"id": 10}, {"id": 11}],
+    },
+    "copy": {"table": "demo_orders", "rows": [[1, "alice"], [2, "bob"]]},
 }
 
 
@@ -72,7 +94,7 @@ async def test_library_and_service_modes_agree(spec, settings):
     # --- library mode: straight through the Facade ---
     dto = spec.request_model.model_validate(PAYLOADS[spec.op])
     handle = foundation.datasource("main")
-    lib_result = await getattr(handle, spec.handle_method)(spec.to_core(dto))
+    lib_result = await spec.call(handle, dto)
     lib_body = spec.to_response(lib_result).model_dump(mode="json")
 
     # --- service mode: over HTTP ---

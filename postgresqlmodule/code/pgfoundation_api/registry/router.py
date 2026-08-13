@@ -10,9 +10,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from fastapi import APIRouter
+from starlette.responses import StreamingResponse
 
 from ..settings import ServiceSettings
-from .endpoints import make_endpoint
+from .endpoints import make_endpoint, make_stream_endpoint
 from .spec import OperationSpec
 
 
@@ -45,7 +46,18 @@ def build_router(
             operation_id=f"{spec.op}_datasource",
         )
 
-        # P3 registers `/{name}/{suffix}/stream` here for streamable specs.
+        if spec.streamable:
+            router.add_api_route(
+                f"/{{name}}/{spec.suffix}/stream",
+                make_stream_endpoint(spec),
+                methods=["POST"],
+                summary=f"{spec.summary} (streamed)",
+                tags=[spec.tag],
+                operation_id=f"{spec.op}_datasource_stream",
+                # The response is NDJSON/SSE bytes, not a model — declaring one
+                # would make FastAPI try to validate a StreamingResponse.
+                response_class=StreamingResponse,
+            )
 
     return router
 

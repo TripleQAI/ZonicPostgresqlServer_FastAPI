@@ -17,18 +17,26 @@ from ..registry.spec import OperationSpec
 
 
 def resolve(item: BatchItem, operations: dict[str, OperationSpec]) -> OperationSpec:
+    """Look the item up in the registry, refusing what must not be batched."""
     spec = operations.get(item.op)
     if spec is None:
         raise QueryError(f"unknown operation {item.op!r}; known: {sorted(operations)}")
-    if spec.streamable and spec.op in _STREAM_ONLY:
-        raise QueryError(f"operation {item.op!r} cannot be batched; use its /stream route")
     return spec
 
 
-#: Streaming pins a connection for the client's read duration, so N streams in one
-#: batch would hold N connections hostage to the slowest reader (doc 06 §6.5).
-#: Populated in P3 when the stream routes exist.
-_STREAM_ONLY: frozenset[str] = frozenset()
+def reject_streams(item: BatchItem) -> None:
+    """Refuse the *streaming* form of an operation inside a batch (doc 06 §6.5).
+
+    A stream pins a connection for the client's read duration, so N streams in
+    one batch would hold N connections hostage to the slowest reader. The unary
+    form of a streamable operation is perfectly batchable — it is the `/stream`
+    route that is not, and a batch item can only ever name the unary form.
+    """
+    if item.op.endswith("_stream") or item.op.endswith("/stream"):
+        raise QueryError(
+            f"{item.op!r} is a streaming route and cannot be batched; "
+            f"batch the unary operation instead"
+        )
 
 
 async def dispatch(
@@ -45,10 +53,11 @@ async def dispatch(
     # OBSERVE (TRACE): child span "pgf.batch.item" {item_id, op, datasource}
     #                  — siblings must OVERLAP in parallel mode (doc 11 §11.4)
     try:
+        reject_streams(item)
         spec = resolve(item, operations)
         payload = spec.request_model.model_validate(item.payload)
         handle = foundation.datasource(item.datasource)
-        result = await getattr(handle, spec.handle_method)(spec.to_core(payload))
+        result = await spec.call(handle, payload)
         return _ok(item, spec, result, started)
     except Exception as exc:  # noqa: BLE001 — deliberately translated per item
         # OBSERVE (METRIC): pgf_batch_items_total{mode, status="error"}
@@ -73,4 +82,4 @@ def _ok(item: BatchItem, spec: OperationSpec, result: Any, started: float) -> Ba
     )
 
 
-__all__ = ["dispatch", "resolve"]
+__all__ = ["dispatch", "reject_streams", "resolve"]

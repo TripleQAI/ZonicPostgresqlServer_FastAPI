@@ -30,6 +30,9 @@ ALLOWED_NON_REGISTRY = {
     # dispatches every item through the SAME operations table, so the two
     # surfaces still cannot drift (ADR-004).
     f"{PREFIX}/batch",
+    # A GET with no body and an unbounded lifetime — not an operation in the
+    # registry sense, so it is hand-written (ADR-006).
+    f"{PREFIX}/datasources/{{name}}/subscribe/{{channel}}",
 }
 
 
@@ -101,6 +104,9 @@ def test_no_body_leaks_as_a_query_parameter(app_all_ops):
 def test_no_data_plane_route_outside_the_registry(app_all_ops):
     """The test that stops the mechanism decaying into hand-written views."""
     generated = {f"{PREFIX}/datasources/{{name}}/{s.suffix}" for s in OPERATIONS}
+    generated |= {
+        f"{PREFIX}/datasources/{{name}}/{s.suffix}/stream" for s in OPERATIONS if s.streamable
+    }
     unexplained = paths(app_all_ops) - generated - ALLOWED_NON_REGISTRY
     assert not unexplained, f"routes bypassing the registry: {sorted(unexplained)}"
 
@@ -128,3 +134,14 @@ def test_every_operation_declares_an_action():
     """The factory turns this into the auth dependency, so it cannot be omitted."""
     for spec in OPERATIONS:
         assert spec.action in {"read", "write", "list"}
+
+
+@pytest.mark.parametrize("spec", [s for s in OPERATIONS if s.streamable], ids=lambda s: s.op)
+def test_streamable_operations_have_a_stream_route(app_all_ops, spec):
+    """`streamable=True` is one flag on one row; the route follows (ADR-006)."""
+    assert f"{PREFIX}/datasources/{{name}}/{spec.suffix}/stream" in paths(app_all_ops)
+
+
+@pytest.mark.parametrize("spec", [s for s in OPERATIONS if not s.streamable], ids=lambda s: s.op)
+def test_non_streamable_operations_have_no_stream_route(app_all_ops, spec):
+    assert f"{PREFIX}/datasources/{{name}}/{spec.suffix}/stream" not in paths(app_all_ops)

@@ -11,7 +11,7 @@ not by discipline.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -51,6 +51,7 @@ class OperationSpec:
     to_response: Callable[[Any], BaseModel]
 
     #: Method name on ``DataSourceHandle`` — resolved with ``getattr``.
+    #: Used by the default invocation path: ``handle.<method>(to_core(dto))``.
     handle_method: str
 
     #: What ``AuthGate`` authorizes. The factory wires this in, so an endpoint
@@ -63,8 +64,21 @@ class OperationSpec:
     #: Raw-SQL surface, registered only when ``api.enable_raw_sql`` is on.
     trusted_only: bool = False
 
+    #: Override for operations whose handle call is not ``method(one_argument)``
+    #: — ``fetch_since`` takes a cursor and a limit, ``copy`` takes a table and
+    #: rows. Supplying a small adapter here keeps the table declarative instead
+    #: of contorting the core to fit one call shape.
+    invoke: Callable[[Any, Any], Awaitable[Any]] | None = None
+
     summary: str = ""
     tag: str = "invoke"
+
+    async def call(self, handle: Any, dto: Any) -> Any:
+        """Run this operation against a handle. One path for every caller —
+        the unary endpoint, the batch dispatcher, and the parity harness."""
+        if self.invoke is not None:
+            return await self.invoke(handle, dto)
+        return await getattr(handle, self.handle_method)(self.to_core(dto))
 
     def __post_init__(self) -> None:
         if not self.op or not self.op.replace("_", "").isalnum():

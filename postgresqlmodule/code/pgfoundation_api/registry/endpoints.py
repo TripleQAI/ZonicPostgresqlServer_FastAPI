@@ -32,12 +32,15 @@ import inspect
 from collections.abc import Callable
 from typing import Annotated, Any
 
-from fastapi import Depends, Path
+from fastapi import Depends, Path, Request
 
 from pgfoundation import DataFoundation
 
-from ..bootstrap.deps import get_foundation
+from ..bootstrap.deps import get_foundation, get_settings
+from ..errors import ResponseTooLarge
 from ..security.gate import Principal, authorize
+from ..settings import ServiceSettings
+from ..transport.streaming import stream_response
 from .spec import OperationSpec
 
 
@@ -48,16 +51,26 @@ def make_endpoint(spec: OperationSpec) -> Callable[..., Any]:
         name: str,
         body: Any,
         foundation: DataFoundation,
+        settings: Any,
         principal: Principal,  # noqa: ARG001 — presence enforces the auth check
     ) -> Any:
         # OBSERVE (TRACE):  span "pgf.operation" {op: spec.op, datasource: name}
         # OBSERVE (METRIC): pgf_http_requests_inflight{route} +1 / -1 around this body
         handle = foundation.datasource(name)
-        result = await getattr(handle, spec.handle_method)(spec.to_core(body))
+        result = await spec.call(handle, body)
         # OBSERVE (METRIC): pgf_query_rows{datasource, op}
         # OBSERVE (LOG):    query.slow when elapsed_ms > observability.slow_query_ms
-        # OBSERVE (METRIC): pgf_response_truncated_total{route} when rows exceed
-        #                   api.max_response_rows (413 path — P3.8)
+        rows = getattr(result, "rows", None)
+        limit = settings.api.max_response_rows
+        if rows is not None and len(rows) > limit:
+            # OBSERVE (METRIC): pgf_response_truncated_total{route}
+            # OBSERVE (LOG):    response.too_large {rows, limit}
+            message = f"result has {len(rows)} rows; the configured maximum for a single response is {limit}"
+            if spec.streamable:
+                # Point at the route that has no such bound, rather than leaving
+                # the caller to discover it.
+                message += f". Use POST .../{{name}}/{spec.suffix}/stream instead"
+            raise ResponseTooLarge(message)
         return spec.to_response(result)
 
     # --- the part that makes FastAPI see a real, typed endpoint --------------
@@ -78,6 +91,11 @@ def make_endpoint(spec: OperationSpec) -> Callable[..., Any]:
             annotation=Annotated[DataFoundation, Depends(get_foundation)],
         ),
         inspect.Parameter(
+            "settings",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=Annotated[ServiceSettings, Depends(get_settings)],
+        ),
+        inspect.Parameter(
             "principal",
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             # The action comes from the descriptor, so an endpoint physically
@@ -95,4 +113,63 @@ def make_endpoint(spec: OperationSpec) -> Callable[..., Any]:
     return endpoint
 
 
-__all__ = ["make_endpoint"]
+__all__ = ["make_endpoint", "make_stream_endpoint"]
+
+
+def make_stream_endpoint(spec: OperationSpec) -> Callable[..., Any]:
+    """Build the streaming variant of one operation (ADR-006, P3.3).
+
+    Same descriptor, same auth action, same DTO — only the framing differs. The
+    core already yields rows lazily from a server-side cursor; this returns a
+    ``StreamingResponse`` over that generator so memory stays flat and
+    backpressure reaches the database.
+    """
+
+    async def endpoint(
+        request: Request,
+        name: str,
+        body: Any,
+        foundation: DataFoundation,
+        principal: Principal,  # noqa: ARG001 — presence enforces the auth check
+    ) -> Any:
+        # OBSERVE (METRIC): pgf_stream_active{datasource} gauge +1 / -1
+        # OBSERVE (TRACE):  span "pgf.stream" {op, datasource}
+        handle = foundation.datasource(name)
+        # compile_spec keeps the shell out of `_internal` while still letting it
+        # stream a governed object rather than only raw SQL.
+        query = handle.compile_spec(spec.to_core(body))
+        rows = handle.stream(query)
+        return stream_response(rows, request)
+
+    parameters = [
+        inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
+        inspect.Parameter(
+            "name",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=Annotated[str, Path(description="Configured data-source name")],
+        ),
+        inspect.Parameter(
+            "body", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=spec.request_model
+        ),
+        inspect.Parameter(
+            "foundation",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=Annotated[DataFoundation, Depends(get_foundation)],
+        ),
+        inspect.Parameter(
+            "principal",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=Annotated[Principal, Depends(authorize(spec.action))],
+        ),
+    ]
+    endpoint.__signature__ = inspect.Signature(parameters)  # type: ignore[attr-defined]
+    endpoint.__annotations__ = {p.name: p.annotation for p in parameters}
+    endpoint.__name__ = f"{spec.op}_stream_endpoint"
+    endpoint.__doc__ = (
+        f"Stream `{spec.op}` at constant memory. Responds with NDJSON "
+        f"(`application/x-ndjson`), or SSE when `Accept: text/event-stream`. "
+        f"A mid-stream failure is reported in band as a final "
+        f'`{{"error": ..., "partial": true}}` record, because the status line has '
+        f"already been sent."
+    )
+    return endpoint

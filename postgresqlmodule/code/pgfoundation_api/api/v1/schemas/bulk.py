@@ -19,4 +19,18 @@ class QueryIn(BaseModel):
     params: dict[str, Any] | list[Any] | None = None
 
 
-__all__ = ["QueryIn"]
+class ExecuteManyIn(BaseModel):
+    """Batched parameterized writes — one protocol exchange for many rows."""
+
+    sql: str = Field(..., description="Parameterized SQL run once per parameter set.")
+    params_seq: list[dict[str, Any] | list[Any]] = Field(default_factory=list)
+
+
+class CopyIn(BaseModel):
+    """Streaming COPY ingest. `table` is validated as an identifier by the core."""
+
+    table: str
+    rows: list[list[Any]] = Field(default_factory=list)
+
+
+__all__ = ["CopyIn", "ExecuteManyIn", "QueryIn"]

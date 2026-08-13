@@ -16,8 +16,8 @@ Reproduce: `../venv314/Scripts/mypy.exe pgfoundation`
 
 | # | Location | Finding | Assessment | Scheduled |
 |---|----------|---------|-----------|-----------|
-| 1 | `_internal/api/handle.py:146` | `ConnectionPort` has no attribute `copy_stream` | **Real gap.** `DataSourceHandle.copy_stream()` calls `conn.copy_stream()`, and both the psycopg driver and `FakeDriver` implement it — but the `ConnectionPort` Protocol in `core/ports.py` never declares it. The port is incomplete, so the type checker cannot verify any adapter actually satisfies the contract the handle relies on. | **P2.11** — that task already extends `ConnectionPort` with `pipeline()`; declare `copy_stream` and `listen` in the same change |
-| 2 | `_internal/api/handle.py:154` | `ConnectionPort` has no attribute `listen` | Same as #1. | **P2.11** |
+| ~~1~~ | `_internal/api/handle.py:146` | `ConnectionPort` has no attribute `copy_stream` | **Real gap.** `DataSourceHandle.copy_stream()` calls `conn.copy_stream()`, and both adapters implement it — but the `ConnectionPort` Protocol never declared it, so nothing verified that an adapter satisfied the contract the handle relies on. | ✅ **CLOSED in P2.11** — declared on the Protocol alongside the new `pipeline()` |
+| ~~2~~ | `_internal/api/handle.py:154` | `ConnectionPort` has no attribute `listen` | Same as #1. | ✅ **CLOSED in P2.11** |
 | 3 | `_internal/connection/registry.py:52` | `MeteredPool` is not a `PoolPort`: `release(conn: MeteredConnection)` narrows `release(conn: ConnectionPort)` | **Real, and already known** — this is defect #6 in [06 §6.9](../../documentations/06-concurrency-batch-parallel.md), the `conn._inner` unwrap. mypy found it independently. The decorator narrows its parameter type, which is unsound: it only works because callers happen to pass back the exact object `acquire()` returned. | **P4.2** — "explicit decorator unwrap contract" |
 | 4 | `_internal/api/facade.py:59` | `PsycopgDriver` assigned to `DriverPort \| None` | Narrowing noise: `driver` is the parameter, reassigned inside `if driver is None`. Harmless at runtime; a local variable would type cleanly. | **P4** cleanup |
 | 5 | `_internal/api/facade.py:63` | `DriverPort \| None` passed where `DriverPort` expected | Consequence of #4. | **P4** cleanup |
@@ -72,10 +72,23 @@ hook. It **works today** (51 passed, 4 skipped) but will break on a future
 upgrade. Left as-is for fidelity; the migration belongs with the P1 test work,
 which rewrites the service-test fixtures anyway.
 
-## What is NOT in this list
+## The design-review defects (doc 06 §6.9)
 
-The [06 §6.9](../../documentations/06-concurrency-batch-parallel.md) concurrency
-defects — unsynchronized circuit-breaker state, `id(spec)` cursor naming, serial
-`health`/`start`/`aclose`, swallowed warm-up errors — are design findings from
-reading the code, not static-analysis output. They keep their existing schedule:
-parallelism fixes in **P2.1**, the rest in **P4.1–P4.7**.
+Separate from static analysis: these came from reading the code during design.
+Progress so far —
+
+| # | Defect | Status |
+|---|--------|--------|
+| 1 | Circuit-breaker state mutated without synchronization | **P4.1** — open |
+| 2 | Server-side cursor named `pgf_stream_{id(spec)}` — `id()` is an address and is **reused after GC**, so two concurrent streams could collide | ✅ **CLOSED in P3.1** — process-wide monotonic counter |
+| 3 | Module-global `_foundation` / `_auth_gate` (service locator) | ✅ **CLOSED in P1.2/P1.3** — lifespan + `app.state` + `Depends` |
+| 4 | `registry.health` / `start` / `aclose` serial | ✅ **CLOSED in P2.1** — `asyncio.gather`; a failed probe reports DOWN rather than failing the whole check |
+| 5 | Pool warm-up swallows every exception | **P4.3** — open |
+| 6 | `MeteredPool.release` reaches into `conn._inner` | **P4.2** — open (also finding #3 above) |
+| 7 | Isolation level set on the connection, restored in `finally` | **P4.7** — open (document + assert the pinned-connection invariant) |
+| 8 | No admission control | ✅ **CLOSED in P2.3/P2.4** — global + per-datasource semaphores, fast 503 |
+| 9 | `execute()` routes writes through `query()`, losing write intent | **P4.6** — open |
+
+Health also gained its missing third state in P1.4: the Django roll-up could
+never report `down`, though the enum, the README and the error model all defined
+it.

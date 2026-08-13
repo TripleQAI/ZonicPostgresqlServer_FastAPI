@@ -29,10 +29,21 @@ from pgfoundation import (
 
 from .security.ports import AuthenticationError, AuthorizationError
 
+
+class ResponseTooLarge(Exception):
+    """Result exceeds api.max_response_rows — the caller wants /stream.
+
+    Refusing is the point: materializing an unbounded result is how a worker
+    OOMs, and the client cannot know the size in advance either. The message
+    names the route that has no such bound (doc 06 §6.7).
+    """
+
+
 #: Core error type -> HTTP status. Order matters: the first isinstance match
 #: wins, so subclasses must precede their bases (PoolTimeoutError is a
 #: ConnectionError; TransientError and QueryError are siblings).
 STATUS_MAP: tuple[tuple[type[Exception], int], ...] = (
+    (ResponseTooLarge, 413),
     (AuthenticationError, 401),
     (AuthorizationError, 403),
     (ConfigError, 404),  # unknown data source is a ConfigError
@@ -93,6 +104,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _authz(request: Request, exc: AuthorizationError) -> JSONResponse:
         return _response(request, exc)
 
+    @app.exception_handler(ResponseTooLarge)
+    async def _too_large(request: Request, exc: ResponseTooLarge) -> JSONResponse:
+        return _response(request, exc)
+
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
         # Deliberately generic: the Django shell returned a clean 400 without
@@ -101,4 +116,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         return _response(request, QueryError("invalid request body"))
 
 
-__all__ = ["RETRYABLE", "STATUS_MAP", "register_exception_handlers", "status_for"]
+__all__ = [
+    "RETRYABLE",
+    "STATUS_MAP",
+    "ResponseTooLarge",
+    "register_exception_handlers",
+    "status_for",
+]

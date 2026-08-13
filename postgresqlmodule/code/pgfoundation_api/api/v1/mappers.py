@@ -11,17 +11,23 @@ that changes semantics overrides mappers rather than forking the engine
 
 from __future__ import annotations
 
+from typing import Any
+
 from pgfoundation import (
+    Agg,
     Command,
     Filter,
     FunctionQuery,
+    IntervalQuery,
     OrderBy,
     ProcedureCall,
     Query,
     ViewQuery,
+    WatermarkCursor,
 )
 
-from .schemas.bulk import QueryIn
+from .schemas.bulk import CopyIn, ExecuteManyIn, QueryIn
+from .schemas.interval import FetchSinceIn, IntervalIn
 from .schemas.invocation import FunctionIn, ProcedureIn, ViewIn
 
 
@@ -58,10 +64,47 @@ def to_command(dto: QueryIn) -> Command:
     return Command(dto.sql, dto.params)
 
 
+def to_interval_query(dto: IntervalIn) -> IntervalQuery:
+    return IntervalQuery(
+        source=dto.source,
+        time_column=dto.time_column,
+        start=dto.start,
+        end=dto.end,
+        every=dto.every,
+        metrics=tuple(Agg(m.column, m.func, m.alias) for m in dto.metrics),
+        group_by=tuple(dto.group_by),
+        tz=dto.tz,
+    )
+
+
+# --- adapters for operations whose handle call is not `method(one_argument)`.
+# Supplied as OperationSpec.invoke so the table stays declarative (ADR-003).
+
+
+async def invoke_fetch_since(handle: Any, dto: FetchSinceIn) -> Any:
+    cursor = WatermarkCursor(
+        order_by=tuple(dto.cursor.order_by),
+        after=tuple(dto.cursor.after) if dto.cursor.after is not None else None,
+    )
+    return await handle.fetch_since(Query(dto.sql, dto.params), cursor, limit=dto.limit)
+
+
+async def invoke_execute_many(handle: Any, dto: ExecuteManyIn) -> Any:
+    return await handle.execute_many(Command(dto.sql, None), dto.params_seq)
+
+
+async def invoke_copy(handle: Any, dto: CopyIn) -> Any:
+    return await handle.copy_stream(dto.table, dto.rows)
+
+
 __all__ = [
+    "invoke_copy",
+    "invoke_execute_many",
+    "invoke_fetch_since",
     "to_command",
     "to_function_query",
     "to_procedure_call",
+    "to_interval_query",
     "to_query",
     "to_view_query",
 ]

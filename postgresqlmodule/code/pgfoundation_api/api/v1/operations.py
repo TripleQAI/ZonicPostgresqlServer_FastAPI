@@ -17,13 +17,18 @@ from __future__ import annotations
 
 from ...registry.spec import OperationSpec
 from .mappers import (
+    invoke_copy,
+    invoke_execute_many,
+    invoke_fetch_since,
     to_command,
     to_function_query,
+    to_interval_query,
     to_procedure_call,
     to_query,
     to_view_query,
 )
-from .schemas.bulk import QueryIn
+from .schemas.bulk import CopyIn, ExecuteManyIn, QueryIn
+from .schemas.interval import FetchSinceIn, IntervalIn, PageOut
 from .schemas.invocation import FunctionIn, ProcedureIn, ViewIn
 from .schemas.responses import ExecuteOut, QueryOut
 
@@ -94,7 +99,55 @@ OPERATIONS: tuple[OperationSpec, ...] = (
         summary="Run a write command (raw SQL — advanced)",
         tag="advanced",
     ),
-    # P3 adds: interval, fetch-since, execute-many, copy — four more rows.
+    # --- P3: designed in the Django docs, never built there. Four rows. -----
+    OperationSpec(
+        op="interval",
+        suffix="interval",
+        request_model=IntervalIn,
+        response_model=QueryOut,
+        to_core=to_interval_query,
+        to_response=QueryOut.from_result,
+        handle_method="interval_page",
+        action="read",
+        streamable=True,
+        summary="Time-bucketed fetch over a half-open [start, end) range",
+    ),
+    OperationSpec(
+        op="fetch_since",
+        suffix="fetch-since",
+        request_model=FetchSinceIn,
+        response_model=PageOut,
+        to_core=lambda dto: dto,  # invoke() takes the DTO directly
+        to_response=PageOut.from_page,
+        handle_method="fetch_since",
+        invoke=invoke_fetch_since,
+        action="read",
+        summary="Resumable keyset page; returns rows plus the next watermark",
+    ),
+    OperationSpec(
+        op="execute_many",
+        suffix="execute-many",
+        request_model=ExecuteManyIn,
+        response_model=ExecuteOut,
+        to_core=lambda dto: dto,
+        to_response=ExecuteOut.from_rowcount,
+        handle_method="execute_many",
+        invoke=invoke_execute_many,
+        action="write",
+        summary="Batched parameterized writes",
+    ),
+    OperationSpec(
+        op="copy",
+        suffix="copy",
+        request_model=CopyIn,
+        response_model=ExecuteOut,
+        to_core=lambda dto: dto,
+        to_response=ExecuteOut.from_rowcount,
+        handle_method="copy_stream",
+        invoke=invoke_copy,
+        action="write",
+        summary="Streaming COPY ingest",
+    ),
 )
 
 #: ``op`` -> spec. The batch dispatcher (P2) resolves items through this, so it

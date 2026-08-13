@@ -5,6 +5,7 @@ Implements the Core ``DriverPort`` / ``PoolPort`` / ``ConnectionPort`` seams ove
 """
 from __future__ import annotations
 
+import itertools
 import time
 from typing import Any, AsyncIterator
 
@@ -34,6 +35,12 @@ async def _as_aiter(rows):
     else:
         for r in rows:
             yield r
+
+# P3.1 — server-side cursor names must be unique per connection.
+# The original used `id(spec)`, which is a memory address and IS REUSED after
+# garbage collection: two concurrent streams could pick the same name and
+# collide. A process-wide monotonic counter cannot repeat.
+_CURSOR_SEQ = itertools.count()
 
 _ISO = {
     IsolationLevel.READ_COMMITTED: psycopg.IsolationLevel.READ_COMMITTED,
@@ -87,7 +94,7 @@ class PsycopgConnection:
         try:
             async with self._conn.transaction():
                 async with self._conn.cursor(
-                    name=f"pgf_stream_{id(spec)}", row_factory=dict_row
+                    name=f"pgf_stream_{next(_CURSOR_SEQ)}", row_factory=dict_row
                 ) as cur:
                     cur.itersize = itersize
                     await cur.execute(spec.sql, spec.params)

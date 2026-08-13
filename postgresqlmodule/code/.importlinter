@@ -1,0 +1,60 @@
+; Architecture contracts — CI fails if any is broken.
+; See documentations/09-project-structure.md §9.3.
+;
+; P0 wires the four core contracts. The three shell contracts (shell-layers,
+; version-independence, cross-cutting-are-leaves) are added in P1 when
+; pgfoundation_api exists — import-linter errors on unknown modules.
+
+[importlinter]
+root_package = pgfoundation
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = Layered architecture — dependencies point inward only (doc 02)
+type = layers
+layers =
+    _internal.api
+    _internal.access
+    _internal.connection
+    _internal.config
+    core
+containers =
+    pgfoundation
+
+[importlinter:contract:core-purity]
+name = Core purity — core imports no driver and no web framework (doc 09 §9.3)
+type = forbidden
+source_modules =
+    pgfoundation.core
+forbidden_modules =
+    psycopg
+    psycopg_pool
+    fastapi
+    starlette
+
+[importlinter:contract:driver-isolation]
+name = Driver isolation — only drivers and the composition root import psycopg
+type = forbidden
+source_modules =
+    pgfoundation.core
+    pgfoundation._internal.config
+    pgfoundation._internal.connection
+    pgfoundation._internal.access
+    pgfoundation._internal.resilience
+    pgfoundation._internal.observability
+forbidden_modules =
+    psycopg
+    psycopg_pool
+; NOTE: _internal.api (the DataFoundation Facade) is the composition root / DI
+; container — the one place allowed to select the concrete driver.
+
+[importlinter:contract:no-web-framework-in-core]
+name = No web framework ever appears in the core library (ADR-001)
+type = forbidden
+source_modules =
+    pgfoundation
+forbidden_modules =
+    fastapi
+    starlette
+    uvicorn
+    django

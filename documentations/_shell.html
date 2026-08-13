@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pgfoundation on FastAPI — Design Plan</title>
+<style>
+:root{
+  --bg:#ffffff; --fg:#1f2328; --muted:#656d76; --border:#d0d7de;
+  --sidebar-bg:#f6f8fa; --link:#0969da; --accent:#0969da;
+  --code-bg:#f0f2f5; --pre-bg:#f6f8fa; --th-bg:#f6f8fa; --card:#f6f8fa;
+  --quote-bar:#d0d7de; --shadow:0 1px 3px rgba(31,35,40,.08);
+  --hl:rgba(9,105,218,.09); --mark:#fff8c5;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --border:#30363d;
+    --sidebar-bg:#010409; --link:#4493f8; --accent:#4493f8;
+    --code-bg:#161b22; --pre-bg:#161b22; --th-bg:#161b22; --card:#161b22;
+    --quote-bar:#30363d; --shadow:0 1px 3px rgba(0,0,0,.4);
+    --hl:rgba(68,147,248,.12); --mark:#3f2e00;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --border:#30363d;
+  --sidebar-bg:#010409; --link:#4493f8; --accent:#4493f8;
+  --code-bg:#161b22; --pre-bg:#161b22; --th-bg:#161b22; --card:#161b22;
+  --quote-bar:#30363d; --shadow:0 1px 3px rgba(0,0,0,.4);
+  --hl:rgba(68,147,248,.12); --mark:#3f2e00;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth; scroll-padding-top:24px}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Reading progress */
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:60;transition:width .1s linear}
+
+.layout{display:flex;min-height:100vh}
+
+/* ---------- Sidebar ---------- */
+.sidebar{width:310px;flex:0 0 310px;background:var(--sidebar-bg);border-right:1px solid var(--border);
+  height:100vh;position:sticky;top:0;overflow-y:auto;z-index:40}
+.brand{padding:16px 18px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--sidebar-bg);z-index:2}
+.brand b{display:block;font-size:14px;letter-spacing:.01em}
+.brand span{display:block;color:var(--muted);font-size:11.5px;margin-top:3px}
+.filter{margin-top:10px;width:100%;padding:6px 10px;font-size:12.5px;color:var(--fg);
+  background:var(--bg);border:1px solid var(--border);border-radius:6px}
+.filter:focus{outline:none;border-color:var(--accent)}
+.sidebar ul{list-style:none;margin:0;padding:8px 0 60px}
+.sidebar li a{display:block;padding:5px 18px 5px 18px;color:var(--fg);font-size:13px;
+  border-left:3px solid transparent;line-height:1.4}
+.sidebar li a:hover{background:var(--hl);text-decoration:none}
+.sidebar li a.active{border-left-color:var(--accent);color:var(--accent);font-weight:600;background:var(--hl)}
+.sidebar li.lvl-3 a{padding-left:30px;font-size:12.5px}
+.sidebar li.hidden{display:none}
+.toc-group{padding:14px 18px 5px;color:var(--muted);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.09em;font-weight:700}
+.menu-btn{display:none;position:fixed;left:12px;top:12px;z-index:70;background:var(--card);
+  color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;box-shadow:var(--shadow)}
+
+/* ---------- Content ---------- */
+.content{flex:1 1 auto;min-width:0;padding:0 52px 140px;max-width:1000px;margin:0 auto}
+.pagehead{padding:38px 0 14px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.pagehead h1{font-size:29px;margin:0 0 6px;letter-spacing:-.01em}
+.pagehead p{color:var(--muted);margin:0;font-size:13.5px}
+.toolbar{margin:16px 0 0;display:flex;gap:8px;flex-wrap:wrap}
+.toolbar button{cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--fg);
+  padding:6px 12px;border-radius:6px;font-size:12.5px;font-family:inherit}
+.toolbar button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---------- Markdown typography ---------- */
+.rendered h1{font-size:27px;margin:.5em 0 .5em;padding-bottom:.3em;border-bottom:1px solid var(--border);letter-spacing:-.01em}
+.rendered h2{font-size:22px;margin:2.2em 0 .6em;padding-bottom:.3em;border-bottom:1px solid var(--border)}
+.rendered h3{font-size:19px;margin:2em 0 .6em;padding-bottom:.25em;border-bottom:1px solid var(--border)}
+.rendered h4{font-size:16px;margin:1.6em 0 .5em}
+.rendered h5{font-size:14.5px;margin:1.3em 0 .4em;color:var(--muted);text-transform:none}
+.rendered h1:first-child{margin-top:0}
+.rendered p{margin:.7em 0}
+.rendered ul,.rendered ol{padding-left:1.7em;margin:.6em 0}
+.rendered li{margin:.25em 0}
+.rendered li>ul,.rendered li>ol{margin:.25em 0}
+.rendered blockquote{margin:1em 0;padding:.6em 1em;color:var(--muted);
+  border-left:4px solid var(--quote-bar);background:var(--card);border-radius:0 6px 6px 0}
+.rendered blockquote p{margin:.3em 0}
+.rendered hr{border:0;border-top:1px solid var(--border);margin:2.6em 0}
+.rendered code{background:var(--code-bg);padding:.15em .4em;border-radius:5px;font-size:85%;
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Consolas,"Liberation Mono",monospace}
+.rendered pre{background:var(--pre-bg);border:1px solid var(--border);border-radius:8px;
+  padding:14px 16px;overflow-x:auto;position:relative}
+.rendered pre code{background:none;padding:0;font-size:12.8px;line-height:1.55}
+.rendered table{border-collapse:collapse;display:block;overflow-x:auto;margin:1.1em 0;font-size:13.6px;max-width:100%}
+.rendered th,.rendered td{border:1px solid var(--border);padding:7px 12px;text-align:left;vertical-align:top}
+.rendered th{background:var(--th-bg);font-weight:600;white-space:nowrap}
+.rendered tr:nth-child(even) td{background:var(--card)}
+.rendered td code{white-space:nowrap}
+.rendered img{max-width:100%}
+.rendered mark{background:var(--mark);color:inherit}
+
+/* heading anchors */
+.rendered .anchor{opacity:0;margin-left:.4em;font-size:.8em;color:var(--muted);text-decoration:none}
+.rendered h2:hover .anchor,.rendered h3:hover .anchor,.rendered h4:hover .anchor{opacity:1}
+
+/* code copy button */
+.copy-btn{position:absolute;top:8px;right:8px;font-size:11px;padding:3px 8px;border-radius:5px;
+  border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s}
+.rendered pre:hover .copy-btn{opacity:1}
+.copy-btn:hover{color:var(--accent);border-color:var(--accent)}
+
+/* mermaid */
+.mermaid{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:16px;margin:1.2em 0;overflow-x:auto;text-align:center}
+.mermaid svg{max-width:100%;height:auto}
+
+/* offline fallback */
+#fallback{display:none;white-space:pre-wrap;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;
+  background:var(--pre-bg);border:1px solid var(--border);border-radius:8px;padding:18px}
+.notice{background:var(--card);border:1px solid var(--border);border-left:4px solid #d29922;
+  border-radius:0 6px 6px 0;padding:12px 16px;margin:16px 0;font-size:14px}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1000px){
+  .menu-btn{display:block}
+  .sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);transition:transform .2s ease;box-shadow:var(--shadow)}
+  .sidebar.open{transform:translateX(0)}
+  .content{padding:56px 20px 100px}
+}
+
+/* ---------- Print ---------- */
+@media print{
+  #progress,.sidebar,.menu-btn,.toolbar,.copy-btn,.anchor{display:none !important}
+  .content{max-width:none;padding:0}
+  body{font-size:11pt}
+  .rendered h2{page-break-before:always;break-before:page}
+  .rendered h1+*,.rendered h2:first-of-type{page-break-before:auto;break-before:auto}
+  .rendered h3,.rendered h4{page-break-after:avoid;break-after:avoid}
+  .rendered pre,.rendered table,.mermaid,.rendered blockquote{page-break-inside:avoid;break-inside:avoid}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<button class="menu-btn" id="menuBtn">&#9776; Contents</button>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+    <div class="brand">
+      <b>pgfoundation on FastAPI</b>
+      <span>Complete design plan &middot; design only, no code</span>
+      <input class="filter" id="filter" type="search" placeholder="Filter sections…" autocomplete="off">
+    </div>
+    <ul id="toc"></ul>
+  </nav>
+
+  <main class="content">
+    <div class="pagehead">
+      <h1>pgfoundation on FastAPI</h1>
+      <p>Complete design plan &middot; ported from <code>ZonicPostgresqlServer_DjangoApp</code> &middot; status: design only (no implementation yet)</p>
+      <div class="toolbar">
+        <button onclick="window.print()">&#128424; Print / Save as PDF</button>
+        <button id="diagBtn" onclick="toggleDiagrams()">Diagrams: on</button>
+        <button id="themeBtn" onclick="cycleTheme()">Theme: auto</button>
+        <button onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593; Top</button>
+      </div>
+    </div>
+
+    <div id="fallback"></div>
+    <div class="rendered" id="rendered"></div>
+  </main>
+</div>
+
+<script type="text/markdown" id="src">@@MARKDOWN@@</script>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+(function(){
+  const SRC = document.getElementById('src').textContent;
+  const out = document.getElementById('rendered');
+  const hasMarked = typeof marked !== 'undefined';
+  const hasMermaid = typeof mermaid !== 'undefined';
+
+  /* ---- Offline fallback: no CDN, still readable ---- */
+  if(!hasMarked){
+    const fb = document.getElementById('fallback');
+    fb.style.display = 'block';
+    fb.textContent = SRC;
+    out.innerHTML = '<div class="notice"><b>Rendering libraries unavailable.</b> ' +
+      'This page loads <code>marked</code> and <code>mermaid</code> from a CDN and could not reach it, ' +
+      'so the plain Markdown source is shown below instead. The same content is in ' +
+      '<code>pgfoundation-fastapi-design.md</code>.</div>';
+    out.parentNode.insertBefore(out, fb);
+    return;
+  }
+
+  /* ---- Markdown -> HTML, mermaid blocks passed through ---- */
+  const renderer = new marked.Renderer();
+  const origCode = renderer.code.bind(renderer);
+  renderer.code = function(token){
+    const lang = (token.lang||'').trim();
+    if(lang === 'mermaid'){
+      return '<pre class="mermaid" data-src="' +
+        token.text.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') +
+        '">' + token.text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>';
+    }
+    return origCode(token);
+  };
+  marked.setOptions({renderer, gfm:true, breaks:false});
+  out.innerHTML = marked.parse(SRC);
+
+  /* ---- Heading ids + anchor links ---- */
+  const slug = t => t.toLowerCase().trim()
+      .replace(/[^\w\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-');
+  const seen = {};
+  out.querySelectorAll('h2,h3,h4').forEach(h=>{
+    if(!h.id){
+      let s = slug(h.textContent) || 'section';
+      if(seen[s]){ s = s + '-' + (++seen[s]); } else { seen[s] = 1; }
+      h.id = s;
+    }
+    const a = document.createElement('a');
+    a.className = 'anchor'; a.href = '#' + h.id; a.textContent = '#';
+    a.setAttribute('aria-label','Link to this section');
+    h.appendChild(a);
+  });
+
+  /* ---- Sidebar TOC from h2/h3 ---- */
+  const toc = document.getElementById('toc');
+  const entries = [...out.querySelectorAll('h2,h3')];
+  let lastWasPart = false;
+  entries.forEach(h=>{
+    const text = h.textContent.replace(/#$/,'').trim();
+    if(/^Part (I|II)\b/.test(text)){
+      const g = document.createElement('li');
+      g.className = 'toc-group'; g.textContent = text;
+      toc.appendChild(g); lastWasPart = true; return;
+    }
+    const li = document.createElement('li');
+    li.className = h.tagName === 'H3' ? 'lvl-3' : 'lvl-2';
+    const a = document.createElement('a');
+    a.href = '#' + h.id; a.dataset.target = h.id; a.textContent = text;
+    li.appendChild(a); toc.appendChild(li);
+  });
+
+  /* ---- Scrollspy ---- */
+  const links = [...toc.querySelectorAll('a[data-target]')];
+  const byId = Object.fromEntries(links.map(l=>[l.dataset.target,l]));
+  const targets = entries.filter(h=>byId[h.id]);
+  const spy = new IntersectionObserver(es=>{
+    es.forEach(e=>{
+      if(e.isIntersecting){
+        links.forEach(l=>l.classList.remove('active'));
+        const l = byId[e.target.id];
+        if(l){ l.classList.add('active');
+          const r = l.getBoundingClientRect();
+          if(r.top < 60 || r.bottom > window.innerHeight - 20) l.scrollIntoView({block:'center'});
+        }
+      }
+    });
+  },{rootMargin:'-8% 0px -82% 0px', threshold:0});
+  targets.forEach(t=>spy.observe(t));
+
+  /* ---- Sidebar filter ---- */
+  document.getElementById('filter').addEventListener('input', e=>{
+    const q = e.target.value.toLowerCase().trim();
+    toc.querySelectorAll('li').forEach(li=>{
+      if(li.classList.contains('toc-group')){ li.classList.toggle('hidden', !!q); return; }
+      const t = li.textContent.toLowerCase();
+      li.classList.toggle('hidden', !!q && !t.includes(q));
+    });
+  });
+
+  /* ---- Copy buttons on code blocks ---- */
+  out.querySelectorAll('pre:not(.mermaid)').forEach(pre=>{
+    const b = document.createElement('button');
+    b.className = 'copy-btn'; b.textContent = 'Copy';
+    b.addEventListener('click', ()=>{
+      const code = pre.querySelector('code');
+      navigator.clipboard.writeText(code ? code.textContent : pre.textContent)
+        .then(()=>{ b.textContent='Copied'; setTimeout(()=>b.textContent='Copy',1400); })
+        .catch(()=>{ b.textContent='Failed'; setTimeout(()=>b.textContent='Copy',1400); });
+    });
+    pre.appendChild(b);
+  });
+
+  /* ---- Reading progress ---- */
+  const bar = document.getElementById('progress');
+  const onScroll = ()=>{
+    const h = document.documentElement;
+    const max = h.scrollHeight - h.clientHeight;
+    bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+  };
+  document.addEventListener('scroll', onScroll, {passive:true}); onScroll();
+
+  /* ---- Mermaid, theme-aware ---- */
+  function isDark(){
+    const t = document.documentElement.getAttribute('data-theme');
+    if(t === 'dark') return true;
+    if(t === 'light') return false;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  let diagramsOn = true;
+  window.renderMermaid = async function(){
+    if(!hasMermaid) return;
+    document.querySelectorAll('.mermaid').forEach(el=>{
+      if(el.dataset.src){ el.textContent = el.dataset.src; el.removeAttribute('data-processed'); }
+    });
+    mermaid.initialize({startOnLoad:false, theme: isDark() ? 'dark' : 'neutral', securityLevel:'loose'});
+    try{ await mermaid.run({querySelector:'.mermaid'}); }
+    catch(e){ console.warn('mermaid render failed', e); }
+  };
+  if(hasMermaid){ window.renderMermaid(); }
+  else {
+    document.querySelectorAll('.mermaid').forEach(el=>{
+      el.insertAdjacentHTML('beforebegin',
+        '<div class="notice">Diagram source shown as text — the mermaid library could not be loaded.</div>');
+    });
+  }
+
+  window.toggleDiagrams = function(){
+    diagramsOn = !diagramsOn;
+    document.querySelectorAll('.mermaid').forEach(m=>m.style.display = diagramsOn ? '' : 'none');
+    document.getElementById('diagBtn').textContent = 'Diagrams: ' + (diagramsOn ? 'on' : 'off');
+  };
+
+  /* ---- Theme toggle: auto -> light -> dark ---- */
+  const MODES = ['auto','light','dark'];
+  let mode = localStorage.getItem('pgf-theme') || 'auto';
+  function applyTheme(){
+    if(mode === 'auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', mode);
+    document.getElementById('themeBtn').textContent = 'Theme: ' + mode;
+    localStorage.setItem('pgf-theme', mode);
+    if(hasMermaid) window.renderMermaid();
+  }
+  window.cycleTheme = function(){
+    mode = MODES[(MODES.indexOf(mode)+1) % MODES.length];
+    applyTheme();
+  };
+  applyTheme();
+  if(window.matchMedia){
+    window.matchMedia('(prefers-color-scheme: dark)')
+      .addEventListener('change', ()=>{ if(mode==='auto' && hasMermaid) window.renderMermaid(); });
+  }
+
+  /* ---- Mobile menu ---- */
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('menuBtn').addEventListener('click', ()=>sidebar.classList.toggle('open'));
+  toc.addEventListener('click', e=>{ if(e.target.tagName==='A') sidebar.classList.remove('open'); });
+
+  /* ---- Print: make sure diagrams are rendered ---- */
+  window.addEventListener('beforeprint', ()=>{
+    if(!diagramsOn){ window.toggleDiagrams(); }
+  });
+})();
+</script>
+</body>
+</html>

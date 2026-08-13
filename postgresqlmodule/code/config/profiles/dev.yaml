@@ -1,0 +1,14 @@
+# dev overlay — merged over config/pgfoundation.yaml.
+# Convenience over hardening. Never use for anything reachable from outside.
+
+auth:
+  enabled: false
+
+api:
+  docs_enabled: true
+  enable_raw_sql: true      # allowed in dev ONLY; refused with auth disabled elsewhere
+
+observability:
+  provider: none
+  log_level: debug
+  slow_query_ms: 100

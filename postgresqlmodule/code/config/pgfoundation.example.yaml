@@ -1,0 +1,47 @@
+# pgfoundation — example connection configuration
+# ---------------------------------------------------------------------------
+# Copy to `pgfoundation.yaml` and edit. This file holds STRUCTURE + tunables;
+# keep real secrets OUT of it — reference them with ${env:VAR} or ${secret:...}.
+#
+# Use it two ways:
+#   Library:  await DataFoundation.from_config("…/pgfoundation.yaml")
+#   Service:  export PGF_CONFIG=/abs/path/to/pgfoundation.yaml   (read on startup)
+
+datasources:
+  # --- The PostgreSQL CONNECTION STRING goes here, in `dsn` ---
+  - name: main                                   # logical name you reference in code
+    # Option A — inline DSN (fine for local dev):
+    dsn: postgresql://fshadmin:fshadmin@localhost:5432/energydata
+    # Option B — pull the DSN from an env var (recommended):
+    # dsn: ${env:PGF_MAIN_DSN}
+    # Option C — pull from a secret manager (Phase-0 falls back to env):
+    # dsn: ${secret:main/dsn}
+    role: standalone                             # primary | replica | standalone
+    pool: { min_size: 1, max_size: 10, acquire_timeout_seconds: 5 }
+    # statement_timeout_ms: 5000
+    # read_only: false
+
+  # Add more named data sources for multi-DB (each gets its own pool):
+  # - name: analytics
+  #   dsn: ${env:PGF_ANALYTICS_DSN}
+  #   role: replica
+  #   read_only: true
+  #   pool: { min_size: 1, max_size: 8 }
+
+resilience:
+  retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
+  circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
+
+# Service shell only — auth is a pluggable seam, DISABLED by default (ADR-013).
+auth:
+  enabled: false
+
+# Observability is integrated from an external log project; default no-op (ADR-014).
+observability:
+  provider: none
+  metrics: { enabled: false }
+  tracing: { enabled: false }
+
+# A DSN string is standard libpq, e.g.:
+#   postgresql://user:password@host:5432/dbname
+#   postgresql://user@host/dbname?sslmode=verify-full&application_name=myapp

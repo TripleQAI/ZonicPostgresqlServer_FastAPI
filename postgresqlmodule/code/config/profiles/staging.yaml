@@ -1,0 +1,16 @@
+# staging overlay — production posture, relaxed observability thresholds.
+
+auth:
+  enabled: true
+  provider: token
+
+api:
+  docs_enabled: true
+  enable_raw_sql: false
+
+observability:
+  provider: otel
+  metrics_enabled: true
+  tracing_enabled: true
+  trace_sample_ratio: 0.25
+  slow_query_ms: 250

@@ -1,0 +1,80 @@
+name: CI
+
+# The gates from documentations/10-testing-and-delivery-plan.md §10.7.
+# Standing rule (13 §13.2): CI is green from P0 onward — a phase does not end
+# with a known-red gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: postgresqlmodule/code
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: postgresqlmodule/code/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # --- gate 1: lint ---
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      # --- gate 2: types ---
+      # Blocking on the public surface, which the design requires to be strict.
+      # The ported core carries 7 pre-existing findings (see PORT-FINDINGS.md);
+      # they are reported, not blocking, until their scheduled phases.
+      - name: Mypy (public surface, blocking)
+        run: mypy pgfoundation/core --follow-imports=silent
+
+      - name: Mypy (full, report-only)
+        continue-on-error: true
+        run: mypy pgfoundation
+
+      # --- gate 3: architecture contracts ---
+      - name: Import Linter
+        run: lint-imports
+
+      # --- gate 4: tests ---
+      # Integration tests skip without PGF_TEST_DSN; they run in the `integration`
+      # job below when the secret is available.
+      - name: Pytest
+        run: pytest -q
+
+  integration:
+    runs-on: ubuntu-latest
+    # Only when a live database is configured; never blocks a fork PR.
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: postgresqlmodule/code/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pytest (integration)
+        env:
+          PGF_TEST_DSN: ${{ secrets.PGF_TEST_DSN }}
+        run: |
+          if [ -z "$PGF_TEST_DSN" ]; then
+            echo "PGF_TEST_DSN not set — integration tests skipped"
+          fi
+          pytest -q tests/integration

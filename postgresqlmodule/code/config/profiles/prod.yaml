@@ -1,0 +1,18 @@
+# prod overlay — the assertions that make "safe in production" a reviewable
+# artifact rather than a deployment convention (doc 05 §5.6, ADR-008).
+
+auth:
+  enabled: true             # fails closed if no provider is registered
+  provider: mtls
+
+api:
+  docs_enabled: false
+  enable_raw_sql: false     # raw SQL never ships on the production surface
+
+observability:
+  provider: otel
+  metrics_enabled: true
+  tracing_enabled: true
+  trace_sample_ratio: 0.05
+  slow_query_ms: 250
+  redact_sql: true

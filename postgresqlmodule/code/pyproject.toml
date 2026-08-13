@@ -1,0 +1,77 @@
+# Tooling config only — this project is NOT an installable package. The service is
+# consumed over its HTTP API; `pgfoundation` and `pgfoundation_api` are imported
+# from this directory (see documentations/09-project-structure.md §9.5).
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra"
+markers = [
+    "integration: needs a live PostgreSQL (set PGF_TEST_DSN)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",    # line length is handled by the formatter
+    "B008",    # FastAPI's Depends(...) in defaults is idiomatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]           # tests import after sys.path/env setup
+
+# --- Ported-code baseline (P0) ---------------------------------------------
+# `pgfoundation/` and the core tests are ported VERBATIM from the Django repo and
+# are asserted byte-identical by the P0.8 fidelity gate (ADR-002). The strict
+# ruleset above flags style modernizations in them — `typing.Sequence` over
+# `collections.abc`, quoted annotations, `(str, Enum)` over `StrEnum`, PEP 695
+# generics. Those are real improvements but they are NOT port work: applying them
+# here would trade away the "the core is unchanged" guarantee that requirement 1
+# rests on, in exchange for cosmetics.
+#
+# So they are silenced for ported paths only — new code (the shell, from P1) is
+# held to the full ruleset. Scheduled for cleanup as a standalone change once the
+# port is no longer the thing under review; tracked in P4.
+"pgfoundation/**" = ["UP035", "UP037", "UP042", "UP046", "I001", "F401", "SIM102", "SIM105", "SIM117"]
+"tests/unit/**" = ["F401", "I001"]
+"tests/integration/**" = ["F401", "I001"]
+"tests/conftest.py" = ["F401", "I001"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]    # without this, every `Field(...)` default reads as a missing arg
+warn_unused_configs = true
+warn_redundant_casts = true
+no_implicit_optional = true
+# `warn_unused_ignores` is off while the ported core carries its original
+# `# type: ignore` comments (P0 fidelity); re-enable with the P4 cleanup.
+warn_unused_ignores = false
+
+# Strict typing on the public surface is a design requirement (09 §9.7) — but the
+# ported core has two untyped defs on that surface (`ResultSet.__iter__`,
+# `TracerPort.span`; findings #6/#7 in PORT-FINDINGS.md). Turning strictness on now
+# would mean either a red gate from P0 — which standing rule 13 §13.2 forbids — or
+# editing the core, which ADR-002 forbids.
+#
+# So the strictness flips on in P4, in the same change that adds the two
+# annotations. Until then mypy runs at default strength over the whole package and
+# is green, so it still blocks *new* type errors in the shell built from P1.
+#
+# [[tool.mypy.overrides]]                       # <- P4: uncomment with the fixes
+# module = ["pgfoundation.core.*", "pgfoundation.__init__"]
+# disallow_untyped_defs = true
+# disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+ignore_errors = true
+
+[tool.ruff.format]
+# Do not reformat ported code — it would break the P0.8 fidelity guarantee.
+# New code (the shell, from P1) is formatted normally.
+exclude = ["pgfoundation/**", "tests/unit/**", "tests/integration/**", "tests/conftest.py"]

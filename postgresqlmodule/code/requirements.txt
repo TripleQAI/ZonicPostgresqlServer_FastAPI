@@ -1,0 +1,25 @@
+# pgfoundation + pgfoundation_api dependencies.
+#
+# Nothing here is an installable package — install these into the venv, then run
+# from this directory (see documentations/09-project-structure.md).
+
+# --- core engine (P0) ---
+psycopg[binary,pool]>=3.2
+pydantic>=2.7
+pyyaml>=6.0                 # YAML config loader (code/config/*.yaml)
+types-PyYAML>=6.0           # stubs, so mypy can see through the loader
+
+# --- service shell (P1+) ---
+fastapi>=0.115
+pydantic-settings>=2.3
+orjson>=3.10                # ADR-007
+uvicorn[standard]>=0.30     # brings httptools + uvloop (POSIX)
+
+# --- dev / test ---
+pytest>=8.0
+pytest-asyncio>=0.23
+httpx>=0.27                 # ASGI test client (P1)
+import-linter>=2.0          # architecture contracts (.importlinter)
+ruff>=0.6
+mypy>=1.11
+pytest-benchmark>=4.0       # perf gate (P5)

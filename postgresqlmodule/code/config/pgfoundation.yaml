@@ -1,0 +1,23 @@
+# pgfoundation — LOCAL config.
+#
+# Structure and tunables only. NO SECRETS: the DSN is a reference the loader
+# resolves from the environment (documentations/12-deployment-targets.md §12.2).
+#
+#   export PGF_MAIN_DSN="postgresql://user:pass@localhost:5432/mydb"
+#   export PGF_CONFIG="$PWD/config/pgfoundation.yaml"
+
+datasources:
+  - name: main
+    dsn: ${env:PGF_MAIN_DSN}
+    role: standalone
+    pool: { min_size: 1, max_size: 10, acquire_timeout_seconds: 5 }
+
+resilience:
+  retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
+  circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
+
+auth:
+  enabled: false          # caller auth — see ADR-008; MUST be true in the prod profile
+
+observability:
+  provider: none          # no-op default; an external project binds the real adapter

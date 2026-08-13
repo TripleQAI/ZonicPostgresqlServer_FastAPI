@@ -42,6 +42,12 @@ class PoolPolicy:
     max_lifetime_seconds: float = 1800.0
     statement_timeout_ms: int | None = None
     read_only: bool = False
+    # P5.2/P5.3 — were hard-coded (itersize=1000 in the handle signature, the
+    # driver's own prepare defaults). Now per data source, so a long-scan source
+    # can fetch in larger batches than an OLTP one.
+    itersize: int = 1000
+    prepare_threshold: int | None = 5
+    prepare_max_cached: int = 100
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ shell package renamed to reflect its framework.
 ```
 ZonicPostgresqlServer_FastAPI/
 ├─ documentations/                    # ← this design plan
-│  ├─ 01..13 *.md
+│  ├─ 01..14 *.md
 │  └─ adr/
 └─ postgresqlmodule/
    ├─ venv314/                        # Python 3.14 virtualenv

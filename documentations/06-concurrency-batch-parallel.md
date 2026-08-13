@@ -270,9 +270,13 @@ already mapped as transient).
 Found while reading the current implementation. Each is a real race or hazard that
 only shows up under the concurrency this project is now asking for.
 
+> **Implementation note (P4).** Eight of the nine were closed while building;
+> `PORT-FINDINGS.md` in the code root tracks each one to the phase that fixed it.
+> **Item 1 below was stated imprecisely in this design and is corrected in place.**
+
 | # | Issue | Consequence | Fix |
 |---|-------|-------------|-----|
-| 1 | `CircuitBreaker` mutates `_failures` / `_state` with no synchronization, from many coroutines | Under concurrent failures the threshold can be over- or under-counted; a half-open probe can be entered by several coroutines at once | Guard transitions with an `asyncio.Lock`, or restructure as a single-writer state machine. Also admit exactly **one** probe in `HALF_OPEN`. |
+| 1 | ~~`CircuitBreaker` mutates `_failures` / `_state` with no synchronization~~ → **corrected:** unbounded probes admitted in `HALF_OPEN` | The counter was **never** at risk: those methods contain no `await`, so on a single event loop they run to completion without interleaving. The real defect is one level up — `allow()` and the outcome are separated by an `await` in `ResilientPool.acquire`, so every coroutine arriving during a probe *also* saw `HALF_OPEN` and *also* proceeded, sending the whole backlog at a database just declared unhealthy | Admit exactly **one** probe in `HALF_OPEN`; release the slot on the probe's outcome. No lock needed — the state transitions were already atomic. |
 | 2 | Server-side cursor named `f"pgf_stream_{id(spec)}"` | `id()` is an address and is reused after GC. Two concurrent streams on the same connection can collide on cursor name | Monotonic counter or `uuid4().hex`, per connection |
 | 3 | Module-global `_foundation` / `_auth_gate` mutated by setters | Cross-test leakage; no isolation; violates the project's own "no service locator" rule | `lifespan` → `app.state` → `Depends` (ADR-005) |
 | 4 | `registry.health/start/aclose` serial | Slow, unbounded startup and probe latency (§6.4) | `asyncio.gather` + drain deadline |

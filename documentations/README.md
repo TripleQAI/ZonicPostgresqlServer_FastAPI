@@ -1,6 +1,6 @@
 # pgfoundation (FastAPI) — Design Plan
 
-A **design-only** plan for rebuilding the PostgreSQL Database Foundation Server
+The design plan for rebuilding the PostgreSQL Database Foundation Server
 (`ZonicPostgresqlServer_DjangoApp`) on **FastAPI**, with the same features and a
 sharper answer to four requirements:
 
@@ -11,15 +11,16 @@ sharper answer to four requirements:
 | 3 | **Proper design patterns** | [03 — Design Patterns](./03-design-patterns.md) — the inherited catalog (Ports & Adapters, Facade, Registry, UoW, Strategy, Decorator, Null Object…) plus the patterns the new concurrency work needs (Command, Scatter–Gather, Bulkhead, Semaphore-bounded backpressure). |
 | 4 | **High performance, throughput, concurrency, parallel & batch calls** | [06 — Concurrency, Batch & Parallel](./06-concurrency-batch-parallel.md) and [07 — Performance](./07-performance.md) — the batch/parallel API, bounded fan-out, psycopg pipeline mode, prepared statements, `COPY`, streaming responses, and the concurrency-correctness defects to fix while porting. |
 
-> **Status: design only.** No code is written by this plan. Every section states
-> what will be built, why, and what it replaces.
+> **Status: P0–P4 built, P5 in progress.** Documents 01–13 describe the intended
+> design; [14 — Build Status](./14-build-status.md) records what is actually
+> implemented, the corrections made while building, and the known gaps.
 
 > 🌐 **Open in a browser:** [`pgfoundation-fastapi-design.html`](./pgfoundation-fastapi-design.html)
 > — the whole design, rendered: sidebar navigation, rendered Mermaid diagrams,
 > light/dark theme, and print-to-PDF.
 >
 > 📄 **Everything in one Markdown file:** [`pgfoundation-fastapi-design.md`](./pgfoundation-fastapi-design.md)
-> — all ten documents and all seven ADRs combined, with the cross-references
+> — all fourteen documents and all eight ADRs combined, with the cross-references
 > rewritten as internal links.
 >
 > The split files below are the same content, and are the source the two combined
@@ -59,6 +60,7 @@ queries, executed with a chosen concurrency strategy against N pools."
 | [11 — Observability: Instrumentation Points](./11-observability-instrumentation-points.md) | **Comments only, no code.** Every point that must emit a metric, span or log event; the signal vocabulary; redaction and cardinality rules. |
 | [12 — Deployment Targets & Environments](./12-deployment-targets.md) | The Timescale Cloud (AWS) target, DSN handling, TLS, connection budget, least-privilege roles, deployment checklist. |
 | [13 — Implementation Plan, Phase by Phase](./13-implementation-plan.md) | **Start here to build.** The six phases as ~60 tasks with dependencies, sizing, exit criteria and a risk register. |
+| [14 — Build Status](./14-build-status.md) | **What is actually built.** Phase status, corrections made while building, known gaps. |
 
 ## Decisions (ADRs)
 

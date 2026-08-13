@@ -3,8 +3,10 @@
 **A design-only plan** for rebuilding the PostgreSQL Database Foundation Server
 (`ZonicPostgresqlServer_DjangoApp`) on **FastAPI**.
 
-> **Status: design only.** No code is written by this plan. Every section states
-> what will be built, why, and what it replaces.
+> **Status: P0-P4 built, P5 in progress.** This plan is no longer design-only —
+> see [Part I · 14](#doc-14) for what is implemented, what was corrected while
+> building, and what is still open. Sections 01-13 describe the intended design;
+> where the build diverged, 14 records why.
 >
 > *This file is generated. The source is the split files in this directory
 > (`01-…md` … `11-…md`, `adr/ADR-00N-…md`); rebuild with `python build.py`.*
@@ -67,6 +69,7 @@ queries, executed with a chosen concurrency strategy against N pools."
 | [11](#doc-11) | **Observability: Instrumentation Points** | **Comments only, no code.** Every point that must emit a metric, span or log event; the signal vocabulary; redaction and cardinality rules. |
 | [12](#doc-12) | **Deployment Targets & Environments** | The Timescale Cloud (AWS) target, DSN handling, TLS, the connection budget, least-privilege roles, and the deployment checklist. |
 | [13](#doc-13) | **Implementation Plan, Phase by Phase** | The six phases expanded to ~60 tasks: what each touches, what it depends on, what proves it done, and where the plan can silently go wrong. |
+| [14](#doc-14) | **Build Status** | What is actually implemented, corrections made while building, and the known gaps. |
 
 **Part II — Decisions (ADRs)**
 
@@ -1187,9 +1190,13 @@ already mapped as transient).
 Found while reading the current implementation. Each is a real race or hazard that
 only shows up under the concurrency this project is now asking for.
 
+> **Implementation note (P4).** Eight of the nine were closed while building;
+> `PORT-FINDINGS.md` in the code root tracks each one to the phase that fixed it.
+> **Item 1 below was stated imprecisely in this design and is corrected in place.**
+
 | # | Issue | Consequence | Fix |
 |---|-------|-------------|-----|
-| 1 | `CircuitBreaker` mutates `_failures` / `_state` with no synchronization, from many coroutines | Under concurrent failures the threshold can be over- or under-counted; a half-open probe can be entered by several coroutines at once | Guard transitions with an `asyncio.Lock`, or restructure as a single-writer state machine. Also admit exactly **one** probe in `HALF_OPEN`. |
+| 1 | ~~`CircuitBreaker` mutates `_failures` / `_state` with no synchronization~~ → **corrected:** unbounded probes admitted in `HALF_OPEN` | The counter was **never** at risk: those methods contain no `await`, so on a single event loop they run to completion without interleaving. The real defect is one level up — `allow()` and the outcome are separated by an `await` in `ResilientPool.acquire`, so every coroutine arriving during a probe *also* saw `HALF_OPEN` and *also* proceeded, sending the whole backlog at a database just declared unhealthy | Admit exactly **one** probe in `HALF_OPEN`; release the slot on the probe's outcome. No lock needed — the state transitions were already atomic. |
 | 2 | Server-side cursor named `f"pgf_stream_{id(spec)}"` | `id()` is an address and is reused after GC. Two concurrent streams on the same connection can collide on cursor name | Monotonic counter or `uuid4().hex`, per connection |
 | 3 | Module-global `_foundation` / `_auth_gate` mutated by setters | Cross-test leakage; no isolation; violates the project's own "no service locator" rule | `lifespan` → `app.state` → `Depends` (ADR-005) |
 | 4 | `registry.health/start/aclose` serial | Slow, unbounded startup and probe latency (§6.4) | `asyncio.gather` + drain deadline |
@@ -1558,7 +1565,7 @@ shell package renamed to reflect its framework.
 ```
 ZonicPostgresqlServer_FastAPI/
 ├─ documentations/                    # ← this design plan
-│  ├─ 01..13 *.md
+│  ├─ 01..14 *.md
 │  └─ adr/
 └─ postgresqlmodule/
    ├─ venv314/                        # Python 3.14 virtualenv
@@ -3062,6 +3069,83 @@ change.
 ---
 
 
+<a id="doc-14"></a>
+
+### 14 — Build Status
+
+What is actually implemented, as against the plan in
+[13](#doc-13). Updated as phases land.
+
+**Last updated:** 2026-08-13 · **Suite:** 188 passed, 4 skipped (live PostgreSQL)
+· ruff clean · mypy clean · 4 architecture contracts kept.
+
+#### 14.1 Phase status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| **P0** — port the core | ✅ **complete** | `diff -r` against the Django repo reports **IDENTICAL**. The ADR-002 guarantee holds by construction. |
+| **P1** — registry shell at parity | ✅ **complete** | The P1.9 spike passed; the parity harness agrees on every operation. |
+| **P2** — batch & parallel | ✅ **complete** | Three strategies, admission control, pipeline seam. P2.14 (load comparison) deferred to P5 with the load harness. |
+| **P3** — streaming | ✅ **complete** | NDJSON + SSE, subscribe, and the four operations the Django docs designed but never built. P3.11 (live integration) blocked — see §14.4. |
+| **P4** — hardening & security | 🟡 **mostly** | 8 of 9 concurrency defects closed; caller auth + policy shipped. P4.10/P4.11 are deployment artifacts. |
+| **P5** — performance & ops | 🟡 **started** | Config tunables done. `row_format`, the `OBSERVE` markers, and the SLO load tests remain. |
+
+#### 14.2 What the code delivers today
+
+**The operations table is 9 rows** — `view`, `function`, `procedure`, `query`,
+`execute`, `interval`, `fetch_since`, `execute_many`, `copy` — and each row
+produces a unary endpoint, an OpenAPI operation, a batch-dispatch entry, and
+(when `streamable`) a streaming endpoint. That is [ADR-003](#adr-003)
+holding up under its first real extension: the four P3 operations each cost one
+row plus a DTO.
+
+| Surface | State |
+|---------|-------|
+| Governed invocation (`view`/`function`/`procedure`) | ✅ at parity, injection boundary intact |
+| Raw SQL (`query`/`execute`) | ✅ gated by `api.enable_raw_sql`, **not registered** when off |
+| `interval`, `fetch-since`, `execute-many`, `copy` | ✅ new — designed in the Django docs, never built there |
+| `POST /v1/batch` — parallel · sequential · transactional | ✅ new |
+| `/stream` (NDJSON + SSE), `/subscribe/{channel}` | ✅ new |
+| `/health`, `/ready` unversioned + `/v1` aliases | ✅ tri-state health |
+| OpenAPI + Swagger UI + ReDoc | ✅ generated |
+| Caller auth + coarse policy ([ADR-008](#adr-008)) | ✅ mesh-identity and shared-secret providers shipped |
+
+#### 14.3 Corrections made while building
+
+Recorded here rather than quietly implemented differently from the design.
+
+| Doc | Correction |
+|-----|-----------|
+| [ADR-007](#adr-007) | `ORJSONResponse` is deprecated; FastAPI's native Pydantic serialization is faster **and** preserves the `Decimal → "42.00"` contract. Both paths were measured before choosing. The orjson encoder is retained for NDJSON/SSE, which bypass Pydantic. |
+| [06 §6.9](#doc-06) item 1 | The circuit-breaker **counter** was never racy — those methods contain no `await`. The real defect was unbounded probes in `HALF_OPEN`, which spans one. |
+| [ADR-003](#adr-003) | Added the `invoke` override for operations whose handle call is not `method(one_argument)`, and consolidated on `spec.call()`. |
+| [09 §9.1](#doc-09) | `registry/mappers.py` lives at `api/v1/mappers.py` — mappers are version-specific, the engine is not. `security/providers.py` was added by P4.8. |
+
+Two findings the type checker produced that the design had also reached by
+reading the code — `ConnectionPort` missing `copy_stream`/`listen`, and
+`MeteredPool.release` narrowing its parameter — are closed (P2.11, P4.2).
+
+#### 14.4 Known gaps
+
+| Gap | Why it is open |
+|-----|----------------|
+| **P3.11 live integration tests** | Needs `PGF_TEST_DSN`. **Confirm first whether port `32064` is a direct or transaction-pooled endpoint** ([12 §12.6](#doc-12)) — under a transaction pooler, server-side cursors, `LISTEN/NOTIFY` and session `SET` all break, and the tests would fail for environmental reasons rather than code ones. |
+| **P4.7 partial** | The pinned-connection isolation invariant is asserted in `UnitOfWork`; the live isolation-level test belongs with P3.11. |
+| **P4.10/P4.11** | Prod-profile assertions exist in `config/profiles/prod.yaml`; the least-privilege database role and `sslmode=verify-full` are deployment actions against the real instance. |
+| **P5 remainder** | `row_format: tuple`, implementing the 25 `OBSERVE` markers, binding an observability provider, micro-benchmarks and the SLO load tests. |
+| **Public-surface strict typing** | Deliberately deferred: enabling `disallow_untyped_defs` surfaces two ported untyped defs, so the flip is scheduled with their annotations. The override sits commented in `pyproject.toml`. |
+
+#### 14.5 Operational constraint
+
+**Do not onboard a second consuming API until the deployment carries real caller
+identity.** The providers are built and tested, but a deployment still has to
+choose one, supply credentials from its secret manager, and populate
+`auth.policy.callers`. Until then the service is safe only while the trusted
+network contains exactly one caller ([ADR-008](#adr-008)).
+
+---
+
+
 ## Part II — Decisions (ADRs)
 
 
@@ -3267,6 +3351,25 @@ A single generic endpoint factory holds the five repeated steps exactly once.
 | Nine hand-written FastAPI endpoints | Maximally explicit; idiomatic | Keeps the repetition requirement 2 objects to; the batch dispatcher would need a *second*, separately-maintained switch over the same operations | Rejected |
 | Fully dynamic: operations defined in YAML | "Ultimate" low-code | Turns config into code near a SQL boundary; unreviewable; untypeable; the operations are not actually open-ended (there are ~9 and they change rarely) | Rejected |
 | Code generation (emit endpoint source at build time) | Explicit output | Build step, generated files in review, worse errors | Rejected |
+
+#### Amendment during implementation (P3.7)
+
+Three of the later operations do not fit `method(one_argument)`: `fetch_since`
+takes a cursor **and** a limit, `copy` takes a table **and** rows,
+`execute_many` takes a statement **and** a parameter sequence. That left two
+options — contort the core so every capability has the same call shape, or let a
+row carry a small adapter.
+
+`OperationSpec` gained an optional **`invoke`** callable. The default path is
+unchanged (`handle.<method>(to_core(dto))`); a row that needs a different shape
+supplies a named adapter function from `mappers.py`. The table stays declarative —
+one row, one function reference — and the core keeps signatures that suit its own
+callers rather than the registry's convenience.
+
+The consolidation is `spec.call(handle, dto)`: **one** path used by the unary
+endpoint, the streaming endpoint, the batch dispatcher and the parity harness
+alike. That is what keeps those four surfaces from drifting, and it is stronger
+than the original `getattr` because there is now a single place to change.
 
 #### Consequences
 
@@ -3608,10 +3711,25 @@ and memory at volume, and repeats every column name in the payload.
 
 #### Decision
 
+> **Amended during P1.14 (2026-08-13).** FastAPI now serializes responses through
+> Pydantic directly and has **deprecated `ORJSONResponse`**, reporting the native
+> path as faster. Both paths were measured against the `Decimal` contract before
+> choosing: **both render `Decimal("42.00")` as the string `"42.00"`**. So the
+> custom response class is **not** used app-wide — the native path is.
+>
+> The encoder table below is still built and still required: NDJSON and SSE
+> streaming (P3) bypass Pydantic and write bytes themselves, so those paths need
+> exactly these rules. They live in `transport/serialization.py` and are applied
+> per streamed row rather than per response.
+>
+> The decision that mattered — *`Decimal` is a string, and that is asserted rather
+> than assumed* — is unchanged. Only the mechanism moved.
+
 ##### Serialization
 
-- **`ORJSONResponse` is the default response class**, including for NDJSON stream
-  framing.
+- **~~`ORJSONResponse` is the default response class~~** → superseded above:
+  FastAPI's native Pydantic serialization is the default; the orjson encoder is
+  retained for the streaming paths.
 - **An explicit encoder table** handles every type psycopg can return that orjson
   does not serialize natively:
 

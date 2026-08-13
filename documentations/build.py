@@ -40,6 +40,7 @@ DOCS = [
     "11-observability-instrumentation-points",
     "12-deployment-targets",
     "13-implementation-plan",
+    "14-build-status",
 ]
 ADRS = [
     "ADR-001-fastapi-service-shell",

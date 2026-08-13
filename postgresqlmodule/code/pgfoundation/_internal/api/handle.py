@@ -40,10 +40,12 @@ class DataSourceHandle:
         name: DataSourceName,
         pool: PoolPort,
         clock: ClockPort | None = None,
+        itersize: int = 1000,
     ) -> None:
         self.name = name
         self._pool = pool
         self._clock = clock or SystemClock()
+        self._itersize = itersize
 
     # --- Read ---
     async def query(
@@ -161,11 +163,18 @@ class DataSourceHandle:
 
     # --- Streaming (pinned connection for the stream's lifetime) ---
     async def stream(
-        self, spec: Query | QuerySpec, *, itersize: int = 1000
+        self, spec: Query | QuerySpec, *, itersize: int | None = None
     ) -> AsyncIterator[Row]:
+        """Stream at constant memory.
+
+        ``itersize`` defaults to the data source's configured value (P5.3) rather
+        than a literal, so a long-scan source can fetch in larger batches than an
+        OLTP one without every caller passing it.
+        """
+        size = itersize if itersize is not None else self._itersize
         conn = await self._pool.acquire()
         try:
-            async for row in conn.stream(spec, itersize=itersize):
+            async for row in conn.stream(spec, itersize=size):
                 yield row
         finally:
             await self._pool.release(conn)
@@ -176,7 +185,7 @@ class DataSourceHandle:
         return await self.query(compile_view(spec))
 
     def view_stream(
-        self, spec: ViewQuery, *, itersize: int = 1000
+        self, spec: ViewQuery, *, itersize: int | None = None
     ) -> AsyncIterator[Row]:
         """Stream a large view result at constant memory (high-throughput reads)."""
         return self.stream(compile_view(spec), itersize=itersize)
@@ -186,7 +195,7 @@ class DataSourceHandle:
         return await self.query(compile_function(spec))
 
     def function_stream(
-        self, spec: FunctionQuery, *, itersize: int = 1000
+        self, spec: FunctionQuery, *, itersize: int | None = None
     ) -> AsyncIterator[Row]:
         return self.stream(compile_function(spec), itersize=itersize)
 
@@ -196,7 +205,7 @@ class DataSourceHandle:
 
     # --- Interval / windowed fetch (doc 16 §16.4) ---
     def interval(
-        self, spec: IntervalQuery, *, itersize: int = 1000
+        self, spec: IntervalQuery, *, itersize: int | None = None
     ) -> AsyncIterator[Row]:
         return self.stream(compile_interval(spec), itersize=itersize)
 

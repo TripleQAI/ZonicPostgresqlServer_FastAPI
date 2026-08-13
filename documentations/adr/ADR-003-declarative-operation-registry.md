@@ -47,6 +47,25 @@ A single generic endpoint factory holds the five repeated steps exactly once.
 | Fully dynamic: operations defined in YAML | "Ultimate" low-code | Turns config into code near a SQL boundary; unreviewable; untypeable; the operations are not actually open-ended (there are ~9 and they change rarely) | Rejected |
 | Code generation (emit endpoint source at build time) | Explicit output | Build step, generated files in review, worse errors | Rejected |
 
+## Amendment during implementation (P3.7)
+
+Three of the later operations do not fit `method(one_argument)`: `fetch_since`
+takes a cursor **and** a limit, `copy` takes a table **and** rows,
+`execute_many` takes a statement **and** a parameter sequence. That left two
+options — contort the core so every capability has the same call shape, or let a
+row carry a small adapter.
+
+`OperationSpec` gained an optional **`invoke`** callable. The default path is
+unchanged (`handle.<method>(to_core(dto))`); a row that needs a different shape
+supplies a named adapter function from `mappers.py`. The table stays declarative —
+one row, one function reference — and the core keeps signatures that suit its own
+callers rather than the registry's convenience.
+
+The consolidation is `spec.call(handle, dto)`: **one** path used by the unary
+endpoint, the streaming endpoint, the batch dispatcher and the parity harness
+alike. That is what keeps those four surfaces from drifting, and it is stronger
+than the original `getattr` because there is now a single place to change.
+
 ## Consequences
 
 - **Positive:** adding a capability is one row plus a DTO. Five tests

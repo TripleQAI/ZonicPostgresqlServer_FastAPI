@@ -32,10 +32,15 @@ class DataFoundation:
     """Composition entry point; exposes the reusable basic APIs (doc 11 §11.4a)."""
 
     def __init__(
-        self, registry: ConnectionRegistry, clock: ClockPort | None = None
+        self,
+        registry: ConnectionRegistry,
+        clock: ClockPort | None = None,
+        itersize: dict[DataSourceName, int] | None = None,
     ) -> None:
         self._registry = registry
         self._clock = clock or SystemClock()
+        # name -> configured stream batch size (P5.3).
+        self._itersize = itersize or {}
 
     # --- Bootstrapping (composition root) ---
     @classmethod
@@ -65,7 +70,8 @@ class DataFoundation:
         registry = ConnectionRegistry(factory)
         for ds in settings.datasources:
             registry.register(ds)
-        return cls(registry, clock)
+        itersize = {ds.name: ds.stream.itersize for ds in settings.datasources}
+        return cls(registry, clock, itersize)
 
     @classmethod
     async def from_settings(
@@ -95,7 +101,12 @@ class DataFoundation:
 
     # --- Resolve / list data sources ---
     def datasource(self, name: DataSourceName) -> DataSourceHandle:
-        return DataSourceHandle(name, self._registry.get(name), self._clock)
+        return DataSourceHandle(
+            name,
+            self._registry.get(name),
+            self._clock,
+            itersize=self._itersize.get(name, 1000),
+        )
 
     def names(self) -> list[DataSourceName]:
         return self._registry.names()

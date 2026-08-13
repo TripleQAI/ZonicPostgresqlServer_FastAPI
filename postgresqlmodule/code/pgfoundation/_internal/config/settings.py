@@ -24,6 +24,19 @@ class PoolSettings(BaseModel):
         return v
 
 
+class StreamSettings(BaseModel):
+    """Per-source streaming tunables (doc 05 §5.2)."""
+
+    itersize: int = Field(1000, gt=0)
+
+
+class PrepareSettings(BaseModel):
+    """Prepared-statement tuning (doc 05 §5.2, doc 07 §7.3)."""
+
+    threshold: int | None = Field(5, ge=0)
+    max_cached: int = Field(100, ge=0)
+
+
 class DataSourceSettings(BaseModel):
     name: str = Field(min_length=1)
     dsn: SecretStr  # resolved from env/secret manager; never logged
@@ -31,6 +44,8 @@ class DataSourceSettings(BaseModel):
     pool: PoolSettings = PoolSettings()
     read_only: bool = False
     statement_timeout_ms: int | None = None
+    stream: StreamSettings = StreamSettings()
+    prepare: PrepareSettings = PrepareSettings()
 
     def to_pool_policy(self) -> PoolPolicy:
         return PoolPolicy(
@@ -41,6 +56,9 @@ class DataSourceSettings(BaseModel):
             max_lifetime_seconds=self.pool.max_lifetime_seconds,
             statement_timeout_ms=self.statement_timeout_ms,
             read_only=self.read_only,
+            itersize=self.stream.itersize,
+            prepare_threshold=self.prepare.threshold,
+            prepare_max_cached=self.prepare.max_cached,
         )
 
 
@@ -97,6 +115,8 @@ class AppSettings(BaseModel):
 
 __all__ = [
     "PoolSettings",
+    "PrepareSettings",
+    "StreamSettings",
     "DataSourceSettings",
     "RetrySettings",
     "CircuitBreakerSettings",

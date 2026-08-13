@@ -3,8 +3,10 @@
 **A design-only plan** for rebuilding the PostgreSQL Database Foundation Server
 (`ZonicPostgresqlServer_DjangoApp`) on **FastAPI**.
 
-> **Status: design only.** No code is written by this plan. Every section states
-> what will be built, why, and what it replaces.
+> **Status: P0-P4 built, P5 in progress.** This plan is no longer design-only —
+> see [Part I · 14](#doc-14) for what is implemented, what was corrected while
+> building, and what is still open. Sections 01-13 describe the intended design;
+> where the build diverged, 14 records why.
 >
 > *This file is generated. The source is the split files in this directory
 > (`01-…md` … `11-…md`, `adr/ADR-00N-…md`); rebuild with `python build.py`.*
@@ -67,6 +69,7 @@ queries, executed with a chosen concurrency strategy against N pools."
 | [11](#doc-11) | **Observability: Instrumentation Points** | **Comments only, no code.** Every point that must emit a metric, span or log event; the signal vocabulary; redaction and cardinality rules. |
 | [12](#doc-12) | **Deployment Targets & Environments** | The Timescale Cloud (AWS) target, DSN handling, TLS, the connection budget, least-privilege roles, and the deployment checklist. |
 | [13](#doc-13) | **Implementation Plan, Phase by Phase** | The six phases expanded to ~60 tasks: what each touches, what it depends on, what proves it done, and where the plan can silently go wrong. |
+| [14](#doc-14) | **Build Status** | What is actually implemented, corrections made while building, and the known gaps. |
 
 **Part II — Decisions (ADRs)**
 

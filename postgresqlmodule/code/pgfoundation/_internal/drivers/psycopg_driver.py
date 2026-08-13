@@ -144,8 +144,18 @@ class PsycopgConnection:
     def begin(self, isolation: IsolationLevel | None = None):
         """Transaction context; nested calls create savepoints (doc 07 §7.5).
 
-        psycopg sets isolation on the *connection*, not per-transaction, so we set
-        it before the block and restore it after (pool connections are reused).
+        psycopg sets isolation on the *connection*, not per-transaction, so it is
+        set before the block and restored after.
+
+        **P4.7 — the invariant this depends on.** That is only safe because a
+        ``UnitOfWork`` PINS one connection for the whole transaction: no other
+        coroutine can observe the connection while its isolation level is
+        changed. If a future change ever let a transaction span connections, or
+        returned the connection to the pool mid-transaction, this would silently
+        leak one caller's isolation level into another's work.
+
+        The invariant is asserted in ``UnitOfWork.__aenter__`` rather than left
+        as a comment, so a refactor that breaks it fails loudly.
         """
         return _PsycopgTransaction(self._conn, isolation)
 
@@ -202,6 +212,11 @@ class PsycopgPool:
     async def _configure(self, conn: "psycopg.AsyncConnection[Any]") -> None:
         # On async connections autocommit must be set via the awaitable setter.
         await conn.set_autocommit(True)  # explicit transactions managed by the UoW
+        # P5.2 — prepared-statement tuning from config, not driver defaults.
+        # The invocation compilers emit deterministic SQL per call shape, so a
+        # low threshold pays off: PostgreSQL stops re-planning the same query.
+        conn.prepare_threshold = self._policy.prepare_threshold
+        conn.prepared_max = self._policy.prepare_max_cached
         if self._policy.read_only:
             await conn.execute("SET default_transaction_read_only = on")
         if self._policy.statement_timeout_ms is not None:

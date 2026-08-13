@@ -64,6 +64,12 @@ class FakeConnection:
             yield event
 
     @contextlib.asynccontextmanager
+    async def pipeline(self):
+        """No-op: statements still run correctly, just without batching."""
+        self._pool.pipelines += 1
+        yield self
+
+    @contextlib.asynccontextmanager
     async def begin(self, isolation: IsolationLevel | None = None):
         depth = self._pool.txn_depth
         self._pool.txn_depth += 1
@@ -97,6 +103,7 @@ class FakePool:
         self.rollbacks = 0
         self.txn_depth = 0
         self.copied: list[tuple[str, int]] = []
+        self.pipelines = 0
         self.notify_events: list = []
 
     async def open(self) -> None:

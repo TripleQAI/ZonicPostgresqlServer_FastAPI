@@ -5,6 +5,8 @@ the composition root; the request path only does O(1) name lookups.
 """
 from __future__ import annotations
 
+import asyncio
+
 from ...core.errors import ConfigError
 from ...core.models import DataSourceName, HealthStatus
 from ...core.ports import ClockPort, DriverPort, MetricsPort, PoolPort

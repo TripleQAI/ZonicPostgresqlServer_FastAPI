@@ -12,7 +12,7 @@ from fastapi import APIRouter
 from ...registry.router import build_router
 from ...settings import ServiceSettings
 from .operations import OPERATION_BY_ID, OPERATIONS
-from .routes import admin
+from .routes import admin, batch
 
 PREFIX = "/v1"
 
@@ -22,6 +22,8 @@ def build(settings: ServiceSettings) -> APIRouter:
     router = APIRouter()
     router.include_router(build_router(OPERATIONS, prefix=PREFIX, settings=settings))
     router.include_router(admin.router, prefix=PREFIX)
+    if settings.batch.enabled:
+        router.include_router(batch.router, prefix=PREFIX)
     return router
 
 

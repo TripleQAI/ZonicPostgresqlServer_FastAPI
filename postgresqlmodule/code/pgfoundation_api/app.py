@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from . import ops
 from .api import versions
+from .batch.limits import AdmissionLimiter
 from .bootstrap.lifespan import lifespan
 from .errors import register_exception_handlers
 from .middleware.correlation import CorrelationMiddleware
@@ -62,6 +63,9 @@ def create_app(
     app.state.settings = settings
     app.state.foundation = foundation
     app.state.auth_gate = build_auth_gate(settings.auth)
+    # Admission control: bounds in-flight DB work so overload sheds fast
+    # instead of collapsing into pool timeouts (doc 06 §6.6).
+    app.state.limiter = AdmissionLimiter(settings.concurrency)
 
     # Cross-cutting. Order matters: correlation runs outermost so every log line
     # and every error body carries the request id. (P2 adds the admission limiter

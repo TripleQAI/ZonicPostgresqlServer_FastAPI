@@ -37,6 +37,29 @@ class ConnectionPort(Protocol):
         """Transaction / savepoint context (nested = savepoint, doc 07 §7.5)."""
         ...
 
+    # --- P2.11: declared here so the contract matches what callers already use.
+    # `copy_stream` and `listen` were called by DataSourceHandle from the start
+    # and implemented by every adapter, but were never part of the Protocol — so
+    # nothing verified that an adapter actually satisfied the contract the handle
+    # relies on (PORT-FINDINGS #1/#2).
+
+    async def copy_stream(self, table: str, rows: Any) -> int:
+        """Streaming bulk ingest via COPY. ``table`` is pre-validated."""
+        ...
+
+    def listen(self, channel: str) -> AsyncIterator[Any]:
+        """LISTEN/NOTIFY change stream. ``channel`` is pre-validated."""
+        ...
+
+    def pipeline(self) -> AsyncContextManager[Any]:
+        """Batch statements into fewer round-trips, where the driver supports it.
+
+        Adapters that cannot pipeline return a no-op context manager: the caller's
+        statements still execute correctly on this connection, just without the
+        round-trip saving. So callers never branch on driver capability.
+        """
+        ...
+
 
 @runtime_checkable
 class PoolPort(Protocol):

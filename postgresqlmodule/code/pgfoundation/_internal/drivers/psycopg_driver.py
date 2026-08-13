@@ -123,6 +123,17 @@ class PsycopgConnection:
         except psycopg.Error as exc:
             raise map_error(exc) from exc
 
+    def pipeline(self):
+        """psycopg pipeline mode — many statements, far fewer round-trips.
+
+        The win is largest when RTT dominates query time, which is the normal
+        case against a managed cloud database (doc 12 §12.6). Note that fetching
+        a result forces a sync point, so the saving applies to the statements
+        queued between syncs rather than collapsing every batch to exactly one
+        round-trip.
+        """
+        return self._conn.pipeline()
+
     def begin(self, isolation: IsolationLevel | None = None):
         """Transaction context; nested calls create savepoints (doc 07 §7.5).
 

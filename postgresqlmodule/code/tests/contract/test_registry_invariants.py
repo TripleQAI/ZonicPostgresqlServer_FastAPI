@@ -26,6 +26,10 @@ ALLOWED_NON_REGISTRY = {
     f"{PREFIX}/health",
     f"{PREFIX}/ready",
     f"{PREFIX}/datasources",
+    # Hand-written because a batch is not a per-datasource invocation — but it
+    # dispatches every item through the SAME operations table, so the two
+    # surfaces still cannot drift (ADR-004).
+    f"{PREFIX}/batch",
 }
 
 

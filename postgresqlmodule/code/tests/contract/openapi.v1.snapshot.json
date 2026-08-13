@@ -7,6 +7,10 @@
     "request": null,
     "response": "HealthOut"
   },
+  "POST /v1/batch": {
+    "request": "BatchRequest",
+    "response": "BatchResult"
+  },
   "GET /v1/datasources": {
     "request": null,
     "response": "DataSourceList"

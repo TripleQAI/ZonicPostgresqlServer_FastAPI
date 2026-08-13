@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator, Sequence
 
+from ...core.errors import QueryError
 from ...core.models import (
     Command,
     DataSourceName,
@@ -73,6 +74,48 @@ class DataSourceHandle:
         conn = await self._pool.acquire()
         try:
             return await conn.execute_many(cmd, params_seq)
+        finally:
+            await self._pool.release(conn)
+
+    def compile_spec(self, obj: Any) -> QuerySpec:
+        """Turn a governed value object into a parameterized :class:`QuerySpec`.
+
+        ``view()`` / ``function()`` / ``procedure()`` compile internally and then
+        execute, which is right for a single call. Callers that need to run
+        several governed operations on **one pinned connection** — a sequential
+        or transactional batch (doc 06 §6.3) — need the compiled spec without the
+        execution, and must not reach into ``_internal`` to get it.
+
+        ``Query`` and ``Command`` are already specs and pass through unchanged.
+        """
+        if isinstance(obj, QuerySpec):
+            return obj
+        if isinstance(obj, ViewQuery):
+            return compile_view(obj)
+        if isinstance(obj, FunctionQuery):
+            return compile_function(obj)
+        if isinstance(obj, ProcedureCall):
+            return compile_procedure(obj)
+        if isinstance(obj, IntervalQuery):
+            return compile_interval(obj)
+        raise QueryError(f"cannot compile {type(obj).__name__} into a QuerySpec")
+
+    async def run_pipeline(
+        self, specs: Sequence[Query | QuerySpec]
+    ) -> list[ResultSet]:
+        """Run N statements on ONE pinned connection, pipelined where supported.
+
+        The ordered, low-round-trip counterpart to fanning out across N
+        connections (doc 06 §6.3). Statements execute in order and results are
+        returned in order.
+
+        Not a transaction: there is no atomicity here. Use ``run_transaction``
+        when all-or-nothing is required.
+        """
+        conn = await self._pool.acquire()
+        try:
+            async with conn.pipeline():
+                return [await conn.execute(spec) for spec in specs]
         finally:
             await self._pool.release(conn)
 

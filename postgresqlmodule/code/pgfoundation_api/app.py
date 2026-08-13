@@ -21,6 +21,7 @@ from .batch.limits import AdmissionLimiter
 from .bootstrap.lifespan import lifespan
 from .errors import register_exception_handlers
 from .middleware.correlation import CorrelationMiddleware
+from .middleware.timing import TimingMiddleware
 from .security.gate import build_auth_gate
 from .settings import ServiceSettings, load_service_settings
 
@@ -70,6 +71,8 @@ def create_app(
     # Cross-cutting. Order matters: correlation runs outermost so every log line
     # and every error body carries the request id. (P2 adds the admission limiter
     # inside it, so rejections are still correlated.)
+    app.add_middleware(TimingMiddleware, request_timeout_ms=settings.api.request_timeout_ms)
+    # Added last => runs first, so even a timeout response carries the id.
     app.add_middleware(CorrelationMiddleware)
 
     # Error translation as a table, not a per-endpoint decorator (doc 08 §8.3).

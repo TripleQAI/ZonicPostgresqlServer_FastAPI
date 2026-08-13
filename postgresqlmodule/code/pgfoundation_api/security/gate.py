@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import Depends, Path, Request
 
 from ..settings import AuthSettings
+from .policy import PolicyAuthorizer
 from .ports import (
     Action,
     AllowAllAuthenticator,
@@ -23,6 +24,7 @@ from .ports import (
     AuthorizerPort,
     Principal,
 )
+from .providers import MeshIdentityAuthenticator, SharedSecretAuthenticator
 
 
 class AuthGate:
@@ -66,17 +68,37 @@ class AuthGate:
         return principal
 
 
-def build_auth_gate(settings: AuthSettings) -> AuthGate:
-    """Composition-root helper: pick providers from config (ADR-008 §3).
+def build_auth_gate(settings: AuthSettings, *, api_keys: dict[str, str] | None = None) -> AuthGate:
+    """Composition-root helper: resolve providers from config (ADR-008 §3, P4.8).
 
-    P4.8/P4.9 register the real mTLS and token authenticators here. Until then,
-    ``enabled: true`` fails closed rather than silently allowing everything —
-    which is the behaviour the prod profile depends on.
+    ``api_keys`` maps subject -> key and is supplied by the platform's secret
+    manager, never by the config file — the file names *who* may call, the secret
+    store holds *what proves it*.
+
+    An unknown provider name fails closed rather than falling back to
+    ``AllowAll``: a typo in a production profile must not silently open the
+    service.
     """
     if not settings.enabled:
         return AuthGate(enabled=False)
-    # P4.8: resolve settings.provider -> concrete authenticator + policy authorizer.
-    return AuthGate(enabled=True)
+
+    authenticator: AuthenticatorPort
+    if settings.provider == "mtls":
+        authenticator = MeshIdentityAuthenticator(settings.mtls)
+    elif settings.provider == "token":
+        authenticator = SharedSecretAuthenticator(settings.token, api_keys or {})
+    else:
+        raise RuntimeError(
+            f"auth.enabled=true with unknown provider {settings.provider!r}; "
+            f"expected 'mtls' or 'token', or register an external adapter — "
+            f"refusing to start"
+        )
+
+    return AuthGate(
+        enabled=True,
+        authenticator=authenticator,
+        authorizer=PolicyAuthorizer(settings.policy),
+    )
 
 
 def get_auth_gate(request: Request) -> AuthGate:

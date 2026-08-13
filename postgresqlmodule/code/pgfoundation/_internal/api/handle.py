@@ -46,9 +46,20 @@ class DataSourceHandle:
         self._clock = clock or SystemClock()
 
     # --- Read ---
-    async def query(self, spec: Query | QuerySpec) -> ResultSet:
+    async def query(
+        self, spec: Query | QuerySpec, *, timeout_ms: int | None = None
+    ) -> ResultSet:
         conn = await self._pool.acquire()
         try:
+            if timeout_ms is not None:
+                # P4.4 — the half that actually stops work. Cancelling the
+                # coroutine abandons the query; PostgreSQL keeps executing it for
+                # a socket nobody reads. SET LOCAL scopes the change to this
+                # statement's transaction, so a pooled connection is not left
+                # carrying a foreign timeout.
+                await conn.execute(
+                    QuerySpec(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
+                )
             return await conn.execute(spec)
         finally:
             await self._pool.release(conn)
@@ -64,9 +75,23 @@ class DataSourceHandle:
         return next(iter(row.values()))
 
     # --- Write ---
-    async def execute(self, cmd: Command | QuerySpec) -> int:
-        rs = await self.query(cmd)
-        return rs.rowcount
+    async def execute(
+        self, cmd: Command | QuerySpec, *, timeout_ms: int | None = None
+    ) -> int:
+        # P4.6 — a write does not travel the read path. Today both acquire the
+        # same pool, but keeping the paths distinct is what lets a future
+        # RoutingStrategy send reads to a replica and writes to the primary
+        # without re-plumbing every caller (doc 02 §2.6).
+        conn = await self._pool.acquire()
+        try:
+            if timeout_ms is not None:
+                await conn.execute(
+                    QuerySpec(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
+                )
+            result = await conn.execute(cmd)
+            return result.rowcount
+        finally:
+            await self._pool.release(conn)
 
     async def execute_many(
         self, cmd: Command | QuerySpec, params_seq: Sequence[Any]

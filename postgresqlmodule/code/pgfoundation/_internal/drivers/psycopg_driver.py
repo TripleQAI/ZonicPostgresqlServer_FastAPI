@@ -178,6 +178,8 @@ class PsycopgPool:
 
     def __init__(self, dsn: str, policy: PoolPolicy) -> None:
         self._policy = policy
+        #: Last warm-up failure, or None. Surfaced by health/readiness (P4.3).
+        self.last_warmup_error: str | None = None
         # Bound each connect attempt so an unreachable DB fails FAST instead of
         # hanging — otherwise the pool's reconnect worker stalls shutdown and can
         # leave the process (and its port) held open. Respect an explicit
@@ -214,8 +216,17 @@ class PsycopgPool:
         await self._pool.open()
         try:
             await self._pool.wait(timeout=self._policy.acquire_timeout_seconds)
-        except Exception:
-            pass  # warmup best-effort; first query still waits up to acquire timeout
+            self.last_warmup_error = None
+        except Exception as exc:  # noqa: BLE001
+            # Startup stays graceful — the service comes up and reports degraded
+            # rather than crash-looping while a database is briefly unreachable.
+            #
+            # But P4.3: the error is now RECORDED. Swallowing it made a
+            # misconfigured DSN indistinguishable from a database that happened
+            # to be down, which is the difference between "wait" and "fix your
+            # config" — and the operator got neither signal.
+            # OBSERVE (LOG): pool.warmup_failed {datasource, error}
+            self.last_warmup_error = f"{type(exc).__name__}: {exc}"
 
     async def close(self) -> None:
         await self._pool.close()

@@ -8,6 +8,7 @@ singletons; everything lands on ``app.state`` and is reached through ``Depends``
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -51,9 +52,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        # P4.5 — bounded graceful drain. SIGTERM should let in-flight work finish
+        # rather than severing it mid-transaction, but "wait for quiet" without a
+        # deadline turns a rolling deploy into a hang, so the wait is bounded and
+        # the outcome is reported.
+        drain_started = time.perf_counter()
+        limiter = getattr(app.state, "limiter", None)
+        deadline = settings.api.request_timeout_ms / 1000.0
+        forced = False
+        if limiter is not None:
+            while limiter.in_flight > 0:
+                if time.perf_counter() - drain_started > deadline:
+                    forced = True
+                    break
+                await asyncio.sleep(0.01)
+
         # OBSERVE (LOG):    service.shutdown {inflight, drained_ms, forced}
         # OBSERVE (METRIC): pgf_shutdown_drain_seconds
-        # P4.5 replaces this with a bounded drain that waits for in-flight work.
+        app.state.drain_seconds = time.perf_counter() - drain_started
+        app.state.drain_forced = forced
+
         if app.state.owns_foundation and app.state.foundation is not None:
             await app.state.foundation.aclose()
 

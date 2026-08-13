@@ -79,15 +79,17 @@ Progress so far —
 
 | # | Defect | Status |
 |---|--------|--------|
-| 1 | Circuit-breaker state mutated without synchronization | **P4.1** — open |
+| 1 | Circuit-breaker: unbounded probes admitted in HALF_OPEN | ✅ **CLOSED in P4.1** — exactly one probe. *(The failure **counter** was never at risk: those methods contain no `await`, so on one event loop they cannot interleave. The design note claiming a counter race was imprecise; probe admission spans an `await` and was the real defect.)* |
 | 2 | Server-side cursor named `pgf_stream_{id(spec)}` — `id()` is an address and is **reused after GC**, so two concurrent streams could collide | ✅ **CLOSED in P3.1** — process-wide monotonic counter |
 | 3 | Module-global `_foundation` / `_auth_gate` (service locator) | ✅ **CLOSED in P1.2/P1.3** — lifespan + `app.state` + `Depends` |
 | 4 | `registry.health` / `start` / `aclose` serial | ✅ **CLOSED in P2.1** — `asyncio.gather`; a failed probe reports DOWN rather than failing the whole check |
-| 5 | Pool warm-up swallows every exception | **P4.3** — open |
-| 6 | `MeteredPool.release` reaches into `conn._inner` | **P4.2** — open (also finding #3 above) |
+| 5 | Pool warm-up swallows every exception | ✅ **CLOSED in P4.3** — recorded as `last_warmup_error`; a bad DSN is now distinguishable from a database that is briefly down |
+| 6 | `MeteredPool.release` reaches into `conn._inner` | ✅ **CLOSED in P4.2** — explicit `unwrap()` contract (also finding #3 above) |
 | 7 | Isolation level set on the connection, restored in `finally` | **P4.7** — open (document + assert the pinned-connection invariant) |
+| — | No request/statement deadline reached PostgreSQL | ✅ **CLOSED in P4.4** — `SET LOCAL statement_timeout` + a bounded request budget |
+| — | Shutdown severed in-flight work | ✅ **CLOSED in P4.5** — bounded graceful drain, outcome recorded |
 | 8 | No admission control | ✅ **CLOSED in P2.3/P2.4** — global + per-datasource semaphores, fast 503 |
-| 9 | `execute()` routes writes through `query()`, losing write intent | **P4.6** — open |
+| 9 | `execute()` routes writes through `query()`, losing write intent | ✅ **CLOSED in P4.6** — separate write path, ready for replica routing |
 
 Health also gained its missing third state in P1.4: the Django roll-up could
 never report `down`, though the enum, the README and the error model all defined

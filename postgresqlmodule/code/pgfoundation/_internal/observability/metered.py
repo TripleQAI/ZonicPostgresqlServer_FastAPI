@@ -42,8 +42,19 @@ class MeteredConnection:
             )
             raise
 
+    def unwrap(self) -> ConnectionPort:
+        """Return the wrapped connection (P4.2).
+
+        The pool must hand the *driver's* object back to the driver, not this
+        decorator. Previously the pool reached into ``conn._inner`` directly,
+        which silently coupled it to this class's private attribute name and to
+        the decorator stack being exactly one deep. An explicit method is a
+        contract any future decorator can honour.
+        """
+        return self._inner
+
     def __getattr__(self, name: str) -> Any:
-        # stream / copy_stream / listen / begin delegate unchanged.
+        # stream / copy_stream / listen / begin / pipeline delegate unchanged.
         return getattr(self._inner, name)
 
 
@@ -74,8 +85,9 @@ class MeteredPool:
             raise
         return MeteredConnection(conn, self._metrics, self._ds)
 
-    async def release(self, conn: MeteredConnection) -> None:
-        inner = conn._inner if isinstance(conn, MeteredConnection) else conn
+    async def release(self, conn: ConnectionPort) -> None:
+        # Unwrap through the contract, not through a private attribute.
+        inner = conn.unwrap() if isinstance(conn, MeteredConnection) else conn
         await self._inner.release(inner)
 
     async def health(self) -> HealthStatus:

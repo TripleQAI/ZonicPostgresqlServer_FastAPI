@@ -1,0 +1,1254 @@
+{
+  "info": {
+    "name": "pgfoundation (FastAPI)",
+    "description": "PostgreSQL Database Foundation Server.\n\n**Generated** from the live OpenAPI document by `curls/generate.py` \u2014 do not edit by hand; re-run instead.\n\n### Set up\n1. Set `baseUrl` (default `http://127.0.0.1:8600`) and `datasource`.\n2. Auth headers are **disabled by default**, matching `auth.enabled: false`. Enable `x-client-cert-subject` (mesh identity) or `Authorization` (token) once the deployment turns auth on.\n3. The trusted raw-SQL folder only works when `api.enable_raw_sql: true`; otherwise those routes are not registered at all and return 404.\n\n`curls/CURLS.md` has the same requests as copy-paste curl, plus the SQL needed to create the demo objects.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8600"
+    },
+    {
+      "key": "datasource",
+      "value": "main"
+    },
+    {
+      "key": "channel",
+      "value": "orders_changed"
+    },
+    {
+      "key": "callerSubject",
+      "value": "orders-api"
+    },
+    {
+      "key": "apiKey",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 \u00b7 Governed invocation (recommended)",
+      "description": "Name a database object and pass parameters. **No SQL crosses the wire**, so there is no injection surface and no arbitrary-table access.",
+      "item": [
+        {
+          "name": "view",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/view",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "view"
+              ]
+            },
+            "description": "Query a view or table by name with structured filters\n\nAuthorized as `read` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"v_paid_orders\",\n  \"columns\": [\n    \"id\",\n    \"customer\",\n    \"amount\"\n  ],\n  \"filters\": [\n    {\n      \"column\": \"customer\",\n      \"op\": \"eq\",\n      \"value\": \"bob\"\n    }\n  ],\n  \"order_by\": [\n    {\n      \"column\": \"id\"\n    }\n  ],\n  \"limit\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "function",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/function",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "function"
+              ]
+            },
+            "description": "Call a function by name\n\nAuthorized as `read` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"fn_orders_by_customer\",\n  \"args\": {\n    \"cust\": \"bob\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "procedure",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/procedure",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "procedure"
+              ]
+            },
+            "description": "Call a stored procedure by name\n\nAuthorized as `write` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"sp_customer_stats\",\n  \"args\": [\n    \"bob\",\n    null,\n    null\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "interval",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/interval",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "interval"
+              ]
+            },
+            "description": "Time-bucketed fetch over a half-open [start, end) range\n\nAuthorized as `read` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"demo_readings\",\n  \"time_column\": \"ts\",\n  \"start\": \"2026-08-13T00:00:00Z\",\n  \"end\": \"2026-08-14T00:00:00Z\",\n  \"every\": \"15 minutes\",\n  \"metrics\": [\n    {\n      \"column\": \"kwh\",\n      \"func\": \"sum\"\n    }\n  ],\n  \"group_by\": [\n    \"meter_id\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "fetch_since",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/fetch-since",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "fetch-since"
+              ]
+            },
+            "description": "Resumable keyset page; returns rows plus the next watermark\n\nAuthorized as `read` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT ts, id, kwh FROM demo_readings WHERE meter_id = %(m)s\",\n  \"params\": {\n    \"m\": 1\n  },\n  \"cursor\": {\n    \"order_by\": [\n      \"ts\",\n      \"id\"\n    ],\n    \"after\": null\n  },\n  \"limit\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "execute_many",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/execute-many",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "execute-many"
+              ]
+            },
+            "description": "Batched parameterized writes\n\nAuthorized as `write` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"INSERT INTO demo_orders (id, customer, amount, status) VALUES (%(id)s, %(c)s, %(a)s, 'paid')\",\n  \"params_seq\": [\n    {\n      \"id\": 101,\n      \"c\": \"carol\",\n      \"a\": \"12.00\"\n    },\n    {\n      \"id\": 102,\n      \"c\": \"dan\",\n      \"a\": \"8.25\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "copy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/copy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "copy"
+              ]
+            },
+            "description": "Streaming COPY ingest\n\nAuthorized as `write` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table\": \"demo_orders\",\n  \"rows\": [\n    [\n      201,\n      \"erin\",\n      \"31.00\",\n      \"paid\"\n    ],\n    [\n      202,\n      \"frank\",\n      \"5.50\",\n      \"paid\"\n    ]\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 \u00b7 Batch",
+      "description": "N operations in one request, with the execution semantics chosen per request.",
+      "item": [
+        {
+          "name": "parallel \u2014 fan out across data sources",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "batch"
+              ]
+            },
+            "description": "The default. Independent operations run concurrently against independent pools. Partial success is normal: HTTP stays 200 and each item carries its own `status`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"parallel\",\n  \"max_concurrency\": 8,\n  \"items\": [\n    {\n      \"id\": \"orders\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 50\n      }\n    },\n    {\n      \"id\": \"totals\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"function\",\n      \"payload\": {\n        \"name\": \"fn_orders_by_customer\",\n        \"args\": {\n          \"cust\": \"bob\"\n        }\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "sequential \u2014 ordered, pipelined",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "batch"
+              ]
+            },
+            "description": "One pinned connection, statements pipelined. Order is guaranteed and the HTTP/validation cost is paid once. Not atomic \u2014 use `transactional` for all-or-nothing. All items must target the same data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"sequential\",\n  \"items\": [\n    {\n      \"id\": \"s0\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 10\n      }\n    },\n    {\n      \"id\": \"s1\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 10\n      }\n    },\n    {\n      \"id\": \"s2\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 10\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "transactional \u2014 all or nothing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "batch"
+              ]
+            },
+            "description": "One UnitOfWork for every item, retried **whole** on serialization failure (40001) or deadlock (40P01).\n\n**The body may run more than once**, so items must be free of non-database side effects. All items must target the same data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"transactional\",\n  \"items\": [\n    {\n      \"id\": \"debit\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"procedure\",\n      \"payload\": {\n        \"name\": \"sp_customer_stats\",\n        \"args\": [\n          \"bob\",\n          null,\n          null\n        ]\n      }\n    },\n    {\n      \"id\": \"credit\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"procedure\",\n      \"payload\": {\n        \"name\": \"sp_customer_stats\",\n        \"args\": [\n          \"alice\",\n          null,\n          null\n        ]\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 \u00b7 Streaming",
+      "description": "Constant-memory reads and live feeds.",
+      "item": [
+        {
+          "name": "view (stream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/x-ndjson"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/view/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "view",
+                "stream"
+              ]
+            },
+            "description": "Query a view or table by name with structured filters\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"v_paid_orders\",\n  \"columns\": [\n    \"id\",\n    \"customer\",\n    \"amount\"\n  ],\n  \"filters\": [\n    {\n      \"column\": \"customer\",\n      \"op\": \"eq\",\n      \"value\": \"bob\"\n    }\n  ],\n  \"order_by\": [\n    {\n      \"column\": \"id\"\n    }\n  ],\n  \"limit\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "function (stream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/x-ndjson"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/function/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "function",
+                "stream"
+              ]
+            },
+            "description": "Call a function by name\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"fn_orders_by_customer\",\n  \"args\": {\n    \"cust\": \"bob\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "query (stream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/x-ndjson"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/query/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "query",
+                "stream"
+              ]
+            },
+            "description": "Run a read query (raw SQL \u2014 advanced)\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT id, customer, amount FROM demo_orders WHERE status = %(s)s LIMIT %(n)s\",\n  \"params\": {\n    \"s\": \"paid\",\n    \"n\": 10\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "interval (stream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/x-ndjson"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/interval/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "interval",
+                "stream"
+              ]
+            },
+            "description": "Time-bucketed fetch over a half-open [start, end) range\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"demo_readings\",\n  \"time_column\": \"ts\",\n  \"start\": \"2026-08-13T00:00:00Z\",\n  \"end\": \"2026-08-14T00:00:00Z\",\n  \"every\": \"15 minutes\",\n  \"metrics\": [\n    {\n      \"column\": \"kwh\",\n      \"func\": \"sum\"\n    }\n  ],\n  \"group_by\": [\n    \"meter_id\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "subscribe (LISTEN/NOTIFY, SSE)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/subscribe/{{channel}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "subscribe",
+                "{{channel}}"
+              ]
+            },
+            "description": "Server-Sent Events fed by LISTEN/NOTIFY. Holds a connection for the subscription's lifetime \u2014 target a data source whose pool can afford it."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4 \u00b7 Admin & probes",
+      "description": "Unversioned operational surface plus the v1 aliases.",
+      "item": [
+        {
+          "name": "health (unversioned)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Liveness. 200 while the process is up, whatever the databases say \u2014 a probe that fails on database trouble kills a process that would have recovered."
+          },
+          "response": []
+        },
+        {
+          "name": "ready (unversioned)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            },
+            "description": "Readiness. 503 when no data source is reachable. **Point your orchestrator here**, not at the /v1 alias, so probes survive an API version retirement."
+          },
+          "response": []
+        },
+        {
+          "name": "metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            },
+            "description": "Prometheus scrape. Empty unless `observability.metrics_enabled` is true."
+          },
+          "response": []
+        },
+        {
+          "name": "datasources",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources"
+              ]
+            },
+            "description": "List configured sources."
+          },
+          "response": []
+        },
+        {
+          "name": "health (v1 alias)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Parity alias."
+          },
+          "response": []
+        },
+        {
+          "name": "ready (v1 alias)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "ready"
+              ]
+            },
+            "description": "Parity alias."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5 \u00b7 Advanced / trusted (raw SQL)",
+      "description": "Registered ONLY when `api.enable_raw_sql: true`. Config refuses that combination with auth disabled outside the dev profile \u2014 raw SQL must never sit on an unauthenticated surface.",
+      "item": [
+        {
+          "name": "query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/query",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "query"
+              ]
+            },
+            "description": "Run a read query (raw SQL \u2014 advanced)\n\nAuthorized as `read` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT id, customer, amount FROM demo_orders WHERE status = %(s)s LIMIT %(n)s\",\n  \"params\": {\n    \"s\": \"paid\",\n    \"n\": 10\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "execute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "execute"
+              ]
+            },
+            "description": "Run a write command (raw SQL \u2014 advanced)\n\nAuthorized as `write` on the data source.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE demo_orders SET status = %(s)s WHERE id = %(id)s\",\n  \"params\": {\n    \"s\": \"shipped\",\n    \"id\": 1\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6 \u00b7 Guarantees (expected failures)",
+      "description": "These are *supposed* to fail. They demonstrate the security and validation boundaries.",
+      "item": [
+        {
+          "name": "400 \u2014 SQL injection in an object name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/view",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "view"
+              ]
+            },
+            "description": "The identifier is validated, never interpolated. This is the security boundary the whole name-based surface rests on.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"v_paid_orders; DROP TABLE demo_orders\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "400 \u2014 operator outside the whitelist",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/view",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "view"
+              ]
+            },
+            "description": "`op` is a closed enum; an unknown operator never reaches SQL.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"v_paid_orders\",\n  \"filters\": [\n    {\n      \"column\": \"id\",\n      \"op\": \"; DROP\",\n      \"value\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "404 \u2014 unknown data source",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "x-client-cert-subject",
+                "value": "{{callerSubject}}",
+                "disabled": true
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources/no-such-source/view",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "no-such-source",
+                "view"
+              ]
+            },
+            "description": "Only configured, named sources are addressable. Clients never send a DSN.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"v_paid_orders\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -43,6 +43,10 @@ def get_limiter(request: Request) -> AdmissionLimiter:
 @router.post(
     "/batch",
     response_model=BatchResult,
+    # An `ok` item carries no `error`, and a failed item carries no `rows` —
+    # emitting `"error": null` on every success (and three nulls on every
+    # failure) is noise a client has to read past on every response.
+    response_model_exclude_none=True,
     summary="Run N operations in one request",
     description=(
         "Modes: `parallel` (bounded scatter-gather across N pools), `sequential` "

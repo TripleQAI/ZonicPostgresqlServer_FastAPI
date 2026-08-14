@@ -362,3 +362,26 @@ def settings() -> ServiceSettings:
 @pytest.fixture
 def settings_small() -> ServiceSettings:
     return ServiceSettings(batch={"max_items": 3})
+
+
+async def test_batch_items_omit_irrelevant_null_fields(settings):
+    """An `ok` item carries no `error`; a failed item carries no `rows`.
+
+    Emitting `"error": null` on every success is noise a client reads past on
+    every single response — the same reasoning as `columns` in ADR-007.
+    """
+    app, foundation = await build_app(settings)
+    body = {
+        "items": [
+            {"id": "ok", "datasource": "main", "op": "view", "payload": {"name": "v_ok"}},
+            {"id": "bad", "datasource": "main", "op": "view", "payload": {"name": "x; DROP"}},
+        ]
+    }
+    out = (await post_batch(app, body)).json()
+    by_id = {r["id"]: r for r in out["results"]}
+
+    assert "error" not in by_id["ok"]
+    assert {"rows", "row_count", "elapsed_ms"} <= set(by_id["ok"])
+    assert "rows" not in by_id["bad"]
+    assert by_id["bad"]["error"]["type"] == "QueryError"
+    await foundation.aclose()

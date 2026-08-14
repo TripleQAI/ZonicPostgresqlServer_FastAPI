@@ -21,7 +21,9 @@ from .models import HealthStatus, IsolationLevel, PoolPolicy, QuerySpec, ResultS
 class ConnectionPort(Protocol):
     """A single, usable connection. Adapters wrap the concrete driver conn."""
 
-    async def execute(self, spec: QuerySpec) -> ResultSet: ...
+    async def execute(
+        self, spec: QuerySpec, *, row_format: str = "dict"
+    ) -> ResultSet: ...
 
     async def execute_many(
         self, spec: QuerySpec, params_seq: Sequence[Any]

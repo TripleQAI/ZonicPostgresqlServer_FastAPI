@@ -49,9 +49,11 @@ class SlowDriver(FakeDriver):
             conn = await original()
             inner = conn.execute
 
-            async def execute(spec):
+            async def execute(spec, *, row_format="dict"):
+                # Mirrors ConnectionPort.execute exactly — a double that drops a
+                # keyword hides real breakage instead of surfacing it.
                 await asyncio.sleep(delay)
-                return await inner(spec)
+                return await inner(spec, row_format=row_format)
 
             conn.execute = execute  # type: ignore[method-assign]
             return conn

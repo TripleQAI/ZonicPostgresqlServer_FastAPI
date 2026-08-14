@@ -11,8 +11,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .common import RowFormatted
 
-class QueryIn(BaseModel):
+
+class QueryIn(RowFormatted):
     """Advanced/trusted: raw parameterized SQL. Prefer the name-based calls."""
 
     sql: str = Field(..., description="Parameterized SQL; values go in `params`.")

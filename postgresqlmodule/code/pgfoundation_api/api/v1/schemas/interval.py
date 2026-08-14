@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .common import RowFormatted
+
 
 class AggIn(BaseModel):
     """A measure + aggregation. ``func`` is whitelisted by the core compiler."""
@@ -19,7 +21,7 @@ class AggIn(BaseModel):
     alias: str | None = None
 
 
-class IntervalIn(BaseModel):
+class IntervalIn(RowFormatted):
     """Time-bucketed read over a half-open ``[start, end)`` range."""
 
     source: str = Field(..., description="Governed table or view name.")

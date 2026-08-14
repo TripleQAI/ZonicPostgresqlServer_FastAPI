@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 from typing import Sequence
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import dict_row, tuple_row
 from psycopg_pool import AsyncConnectionPool
 
 from ...core.errors import PoolTimeoutError
@@ -59,19 +59,29 @@ class PsycopgConnection:
     def raw(self) -> "psycopg.AsyncConnection[Any]":
         return self._conn
 
-    async def execute(self, spec: QuerySpec) -> ResultSet:
+    async def execute(
+        self, spec: QuerySpec, *, row_format: str = "dict"
+    ) -> ResultSet:
         start = time.perf_counter()
+        # P5.1 — the row factory IS the mechanism (doc 07 §7.5). Converting dicts
+        # back into tuples in Python afterwards would spend exactly the time the
+        # tuple format exists to save.
+        factory = tuple_row if row_format == "tuple" else dict_row
+        columns: list[str] | None = None
         try:
-            async with self._conn.cursor(row_factory=dict_row) as cur:
+            async with self._conn.cursor(row_factory=factory) as cur:
                 await cur.execute(spec.sql, spec.params)
-                rows: list[Row] = await cur.fetchall() if cur.description else []
+                rows: list[Any] = await cur.fetchall() if cur.description else []
                 rowcount = cur.rowcount
+                if row_format == "tuple" and cur.description:
+                    columns = [d.name for d in cur.description]
         except psycopg.Error as exc:
             raise map_error(exc) from exc
         return ResultSet(
             rows=rows,
             rowcount=rowcount,
             elapsed_ms=(time.perf_counter() - start) * 1000.0,
+            columns=columns,
         )
 
     async def execute_many(self, spec: QuerySpec, params_seq: Sequence) -> int:

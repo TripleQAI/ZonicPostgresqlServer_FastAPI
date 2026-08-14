@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from . import ops
 from .api import versions
 from .batch.limits import AdmissionLimiter
+from .bootstrap.providers import build_metrics
 from .bootstrap.lifespan import lifespan
 from .errors import register_exception_handlers
 from .middleware.correlation import CorrelationMiddleware
@@ -63,6 +64,10 @@ def create_app(
     # is reached via Depends — never via a module-level global.
     app.state.settings = settings
     app.state.foundation = foundation
+    # ADR-014: the composition root is the one place that knows the concrete
+    # observability provider. Default is a Null Object, so nothing is paid for
+    # until a deployment turns it on.
+    app.state.metrics = build_metrics(settings.observability)
     app.state.auth_gate = build_auth_gate(settings.auth)
     # Admission control: bounds in-flight DB work so overload sheds fast
     # instead of collapsing into pool timeouts (doc 06 §6.6).
@@ -71,7 +76,11 @@ def create_app(
     # Cross-cutting. Order matters: correlation runs outermost so every log line
     # and every error body carries the request id. (P2 adds the admission limiter
     # inside it, so rejections are still correlated.)
-    app.add_middleware(TimingMiddleware, request_timeout_ms=settings.api.request_timeout_ms)
+    app.add_middleware(
+        TimingMiddleware,
+        request_timeout_ms=settings.api.request_timeout_ms,
+        metrics=app.state.metrics,
+    )
     # Added last => runs first, so even a timeout response carries the id.
     app.add_middleware(CorrelationMiddleware)
 

@@ -100,12 +100,21 @@ class DataFoundation:
         )
 
     # --- Resolve / list data sources ---
-    def datasource(self, name: DataSourceName) -> DataSourceHandle:
+    def datasource(
+        self, name: DataSourceName, *, row_format: str = "dict"
+    ) -> DataSourceHandle:
+        """Resolve a data source.
+
+        ``row_format`` selects the row shape for this handle's reads: ``dict``
+        (default, one mapping per row) or ``tuple`` (sequences plus a ``columns``
+        list — fewer allocations and a smaller payload on wide results).
+        """
         return DataSourceHandle(
             name,
             self._registry.get(name),
             self._clock,
             itersize=self._itersize.get(name, 1000),
+            row_format=row_format,
         )
 
     def names(self) -> list[DataSourceName]:

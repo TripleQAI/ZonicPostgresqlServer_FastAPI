@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,7 +22,17 @@ class OrderByIn(BaseModel):
     descending: bool = False
 
 
-class SchemaQualified(BaseModel):
+class RowFormatted(BaseModel):
+    """Mixin for read payloads that may choose their row shape (ADR-007).
+
+    ``None`` means "use ``api.default_row_format``", so a deployment can move its
+    whole surface to tuples without every client changing.
+    """
+
+    row_format: Literal["dict", "tuple"] | None = None
+
+
+class SchemaQualified(RowFormatted):
     """Base for the name-based payloads.
 
     The request field is ``schema``; internally it is ``db_schema`` because
@@ -36,4 +46,4 @@ class SchemaQualified(BaseModel):
     db_schema: str | None = Field(default=None, alias="schema")
 
 
-__all__ = ["FilterIn", "OrderByIn", "SchemaQualified"]
+__all__ = ["FilterIn", "OrderByIn", "RowFormatted", "SchemaQualified"]

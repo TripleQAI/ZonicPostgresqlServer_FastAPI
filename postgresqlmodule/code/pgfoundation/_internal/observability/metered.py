@@ -20,9 +20,11 @@ class MeteredConnection:
         self._metrics = metrics
         self._ds = ds
 
-    async def execute(self, spec: QuerySpec) -> ResultSet:
+    async def execute(self, spec: QuerySpec, *, row_format: str = "dict") -> ResultSet:
+        # A decorator must track its port's signature: forwarding by **kwargs
+        # would hide the next change instead of failing on it.
         try:
-            rs = await self._inner.execute(spec)
+            rs = await self._inner.execute(spec, row_format=row_format)
         except PgFoundationError as exc:
             self._metrics.incr(
                 "pgf_query_errors_total", datasource=self._ds, type=type(exc).__name__

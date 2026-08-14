@@ -41,11 +41,16 @@ class DataSourceHandle:
         pool: PoolPort,
         clock: ClockPort | None = None,
         itersize: int = 1000,
+        row_format: str = "dict",
     ) -> None:
         self.name = name
         self._pool = pool
         self._clock = clock or SystemClock()
         self._itersize = itersize
+        # P5.1 — bound on the handle rather than threaded through all nine
+        # operations. `foundation.datasource(name, row_format=...)` returns a
+        # handle configured for that shape (doc 07 §7.5).
+        self._row_format = row_format
 
     # --- Read ---
     async def query(
@@ -62,7 +67,7 @@ class DataSourceHandle:
                 await conn.execute(
                     QuerySpec(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
                 )
-            return await conn.execute(spec)
+            return await conn.execute(spec, row_format=self._row_format)
         finally:
             await self._pool.release(conn)
 

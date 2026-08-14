@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -24,21 +25,30 @@ from starlette.responses import JSONResponse, Response
 class TimingMiddleware(BaseHTTPMiddleware):
     """Bound every request, and record how long it took."""
 
-    def __init__(self, app, *, request_timeout_ms: int) -> None:
+    def __init__(self, app, *, request_timeout_ms: int, metrics: Any = None) -> None:
         super().__init__(app)
         self._timeout_s = request_timeout_ms / 1000.0
+        self._metrics = metrics
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         started = time.perf_counter()
-        # OBSERVE (METRIC): pgf_http_requests_inflight{route} +1 / -1
+        # `route` is the TEMPLATE ("/v1/datasources/{name}/view"), never the
+        # concrete path: the latter embeds the data-source name and would mint a
+        # series per source per route (doc 11 §11.9).
+        route = _route_template(request)
+        metrics = self._metrics or request.app.state.metrics
+        metrics.incr("pgf_http_requests_inflight", 1, route=route)
         try:
             async with asyncio.timeout(self._timeout_s):
                 response = await call_next(request)
         except TimeoutError:
             # OBSERVE (METRIC): pgf_http_requests_total{status="503"}
             # OBSERVE (LOG):    request.timeout {route, budget_ms}
+            metrics.incr(
+                "pgf_http_requests_total", 1, route=route, method=request.method, status="503"
+            )
             return JSONResponse(
                 {
                     "error": (f"request exceeded its {self._timeout_s * 1000:.0f}ms budget"),
@@ -48,12 +58,37 @@ class TimingMiddleware(BaseHTTPMiddleware):
                 status_code=503,
                 headers={"Retry-After": "1"},
             )
+        finally:
+            metrics.incr("pgf_http_requests_inflight", -1, route=route)
 
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
-        # OBSERVE (METRIC): pgf_http_request_duration_seconds{route, method}
-        # OBSERVE (METRIC): pgf_http_requests_total{route, method, status, version}
-        response.headers["X-Elapsed-Ms"] = f"{elapsed_ms:.2f}"
+        elapsed = time.perf_counter() - started
+        metrics.observe(
+            "pgf_http_request_duration_seconds", elapsed, route=route, method=request.method
+        )
+        metrics.incr(
+            "pgf_http_requests_total",
+            1,
+            route=route,
+            method=request.method,
+            status=str(response.status_code),
+            version=_api_version(request),
+        )
+        response.headers["X-Elapsed-Ms"] = f"{elapsed * 1000:.2f}"
         return response
 
 
 __all__ = ["TimingMiddleware"]
+
+
+def _route_template(request: Request) -> str:
+    """The route pattern, not the concrete path (doc 11 §11.9)."""
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    return path or request.url.path
+
+
+def _api_version(request: Request) -> str:
+    """Which mounted API version served this — the label that answers
+    "is anyone still on v1?" before it is switched off (doc 09 §9.1b)."""
+    segments = request.url.path.strip("/").split("/")
+    return segments[0] if segments and segments[0].startswith("v") else "none"

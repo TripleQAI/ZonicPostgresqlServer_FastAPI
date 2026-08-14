@@ -56,7 +56,10 @@ def make_endpoint(spec: OperationSpec) -> Callable[..., Any]:
     ) -> Any:
         # OBSERVE (TRACE):  span "pgf.operation" {op: spec.op, datasource: name}
         # OBSERVE (METRIC): pgf_http_requests_inflight{route} +1 / -1 around this body
-        handle = foundation.datasource(name)
+        # Request wins over config; config lets a deployment move its whole
+        # surface to tuples without any client changing (ADR-007).
+        row_format = getattr(body, "row_format", None) or settings.api.default_row_format
+        handle = foundation.datasource(name, row_format=row_format)
         result = await spec.call(handle, body)
         # OBSERVE (METRIC): pgf_query_rows{datasource, op}
         # OBSERVE (LOG):    query.slow when elapsed_ms > observability.slow_query_ms

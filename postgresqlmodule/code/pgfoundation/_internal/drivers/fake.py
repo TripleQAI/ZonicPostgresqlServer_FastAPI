@@ -33,9 +33,19 @@ class FakeConnection:
         self._responder = responder
         self._pool = pool
 
-    async def execute(self, spec: QuerySpec) -> ResultSet:
+    async def execute(self, spec: QuerySpec, *, row_format: str = "dict") -> ResultSet:
         self._pool.executed.append(spec)
-        return self._responder(spec)
+        result = self._responder(spec)
+        if row_format != "tuple" or not result.rows:
+            return result
+        # Emulate the driver's tuple factory so the shell exercises the same shape.
+        columns = list(result.rows[0].keys())
+        return ResultSet(
+            rows=[[row[c] for c in columns] for row in result.rows],
+            rowcount=result.rowcount,
+            elapsed_ms=result.elapsed_ms,
+            columns=columns,
+        )
 
     async def execute_many(self, spec: QuerySpec, params_seq: Sequence) -> int:
         self._pool.executed.append(spec)

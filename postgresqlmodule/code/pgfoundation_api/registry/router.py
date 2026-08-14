@@ -41,6 +41,15 @@ def build_router(
             make_endpoint(spec),
             methods=["POST"],
             response_model=spec.response_model,
+            # ADR-007: `columns` is present only in tuple format, so a dict-format
+            # response is byte-identical to what clients saw before row_format
+            # existed. Emitting `"columns": null` on every read would be a visible
+            # wire change for a feature most callers never opt into.
+            #
+            # Safe across the other envelopes too: no response field is ever
+            # legitimately null except PageOut.next_watermark, where "absent" and
+            # "null" carry the same meaning to a client.
+            response_model_exclude_none=True,
             summary=spec.summary,
             tags=[spec.tag],
             operation_id=f"{spec.op}_datasource",

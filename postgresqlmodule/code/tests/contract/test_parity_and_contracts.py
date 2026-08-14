@@ -95,7 +95,9 @@ async def test_library_and_service_modes_agree(spec, settings):
     dto = spec.request_model.model_validate(PAYLOADS[spec.op])
     handle = foundation.datasource("main")
     lib_result = await spec.call(handle, dto)
-    lib_body = spec.to_response(lib_result).model_dump(mode="json")
+    # Same serialization policy the shell applies (ADR-007: absent, not null),
+    # so the comparison isolates the DATA rather than re-testing serialization.
+    lib_body = spec.to_response(lib_result).model_dump(mode="json", exclude_none=True)
 
     # --- service mode: over HTTP ---
     async with (
@@ -139,10 +141,25 @@ async def test_numeric_serializes_as_string(client):
 
 
 async def test_response_envelope_field_names(client):
+    """The dict-format envelope is exactly what it was before row_format existed.
+
+    `columns` must be ABSENT, not null: emitting it on every read would be a
+    visible wire change for a feature the caller did not ask for (ADR-007).
+    """
     body = (await client.post(f"{PREFIX}/datasources/main/view", json=PAYLOADS["view"])).json()
     assert set(body) == {"rows", "row_count", "elapsed_ms"}
     assert isinstance(body["row_count"], int)
     assert isinstance(body["elapsed_ms"], float)
+
+
+async def test_tuple_format_adds_columns_and_nothing_else(client):
+    body = (
+        await client.post(
+            f"{PREFIX}/datasources/main/view",
+            json={**PAYLOADS["view"], "row_format": "tuple"},
+        )
+    ).json()
+    assert set(body) == {"rows", "row_count", "elapsed_ms", "columns"}
 
 
 async def test_schema_alias_is_accepted(client):

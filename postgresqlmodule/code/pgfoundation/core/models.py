@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 # A logical, configured data-source name (e.g. "orders-primary").
 DataSourceName = str
@@ -203,13 +203,24 @@ class RetryPolicy:
     jitter: bool = True
 
 
+RowFormat = Literal["dict", "tuple"]
+
+
 @dataclass
 class ResultSet:
-    """The outcome of executing a QuerySpec."""
+    """The outcome of executing a QuerySpec.
 
-    rows: list[Row] = field(default_factory=list)
+    ``rows`` holds mappings in ``dict`` format (the default) and sequences in
+    ``tuple`` format, where ``columns`` names them. Tuple format skips building
+    one dict per row, which is real work at volume, and drops the repeated keys
+    from the payload (doc 07 §7.5).
+    """
+
+    rows: list[Any] = field(default_factory=list)
     rowcount: int = 0
     elapsed_ms: float = 0.0
+    #: Column names — populated only for ``tuple`` format.
+    columns: list[str] | None = None
 
     def __iter__(self):
         return iter(self.rows)
@@ -230,6 +241,7 @@ __all__ = [
     "Query",
     "Command",
     "ResultSet",
+    "RowFormat",
     "FilterOp",
     "Filter",
     "OrderBy",

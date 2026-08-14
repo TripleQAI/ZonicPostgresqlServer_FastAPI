@@ -41,7 +41,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "no config: set PGF_CONFIG (or pass config_path) so the foundation "
                 "knows which data sources to open"
             )
-        app.state.foundation = await DataFoundation.from_config(settings.config_path)
+        # The core's MeteredPool/MeteredConnection already emit pool and query
+        # signals; binding the adapter here is what makes them visible.
+        app.state.foundation = await DataFoundation.from_config(
+            settings.config_path, metrics=app.state.metrics
+        )
         app.state.owns_foundation = True
     else:
         # Injected — whoever injected it is responsible for closing it.

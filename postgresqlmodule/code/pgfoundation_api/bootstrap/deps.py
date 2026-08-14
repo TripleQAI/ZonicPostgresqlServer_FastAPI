@@ -26,4 +26,9 @@ def get_foundation(request: Request) -> DataFoundation:
     return foundation
 
 
-__all__ = ["get_foundation", "get_settings"]
+def get_metrics(request: Request):
+    """The bound MetricsPort. A Null Object unless metrics are enabled."""
+    return request.app.state.metrics
+
+
+__all__ = ["get_foundation", "get_metrics", "get_settings"]

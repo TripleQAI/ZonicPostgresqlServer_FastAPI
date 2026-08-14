@@ -1,0 +1,34 @@
+{
+  // Point the editor at the project's virtualenv so imports resolve and the
+  // "package is not installed" hints disappear.
+  "python.defaultInterpreterPath": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+
+  // Nothing is pip-installed from this repo; postgresqlmodule/code is the import
+  // root (the entry points add it to sys.path at runtime).
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/postgresqlmodule/code"
+  ],
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}/postgresqlmodule/code",
+  "python.testing.pytestArgs": ["-q"],
+
+  // Ruff is the project's linter AND formatter (pyproject.toml). Ported paths
+  // are excluded from formatting there, so format-on-save cannot damage the
+  // P0.8 fidelity diff.
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true
+  }
+}

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pgfoundation import ConfigError
@@ -149,8 +149,18 @@ class ServiceSettings(BaseSettings):
         extra="ignore",  # the same document also carries core-owned keys
     )
 
-    config_path: str | None = None  # PGF_CONFIG — the pgfoundation.yaml to load
-    profile: str | None = None  # PGF_PROFILE — dev | staging | prod
+    # `env_prefix` would derive PGF_CONFIG_PATH from the field name, but the
+    # documented and inherited variable is PGF_CONFIG (doc 09 §9.6, doc 12 §12.2)
+    # — and a launcher that silently ignores the variable everyone was told to
+    # set is worse than one that fails. Both spellings are accepted.
+    config_path: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PGF_CONFIG", "PGF_CONFIG_PATH", "config_path"),
+    )
+    profile: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PGF_PROFILE", "profile"),
+    )
 
     api: ApiSettings = Field(default_factory=ApiSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)

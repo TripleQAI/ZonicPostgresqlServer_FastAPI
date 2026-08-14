@@ -1,0 +1,119 @@
+{
+  // VS Code launch configurations for pgfoundation (localhost).
+  //
+  // Requires the Python extension and the dependencies installed into
+  // postgresqlmodule/venv314:
+  //   postgresqlmodule/venv314/Scripts/python -m pip install -r postgresqlmodule/code/requirements.txt
+  //
+  // Nothing is pip-installed from this repo itself — the entry points put
+  // postgresqlmodule/code on sys.path themselves.
+  //
+  // DATABASE CREDENTIALS: config/pgfoundation.yaml holds a `${env:PGF_MAIN_DSN}`
+  // reference, never a DSN. Put yours in a gitignored `.env` at the repo root
+  // (copy `.env.example`); every config below loads it via `envFile`. This is the
+  // same rule production follows — the file names the source, the environment
+  // supplies the secret (doc 12 §12.2).
+  //
+  // No database to hand? Use "demo (no database)" — it serves the full API,
+  // Swagger UI and the curls/ collection against an in-memory fake driver.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "service · localhost:8600",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pgfoundation_api.run_local",
+      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+      "cwd": "${workspaceFolder}/postgresqlmodule/code",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PGF_CONFIG": "${workspaceFolder}/postgresqlmodule/code/config/pgfoundation.yaml",
+        "PGF_PROFILE": "dev",
+        "PGF_SERVER__HOST": "127.0.0.1",
+        "PGF_SERVER__PORT": "8600",
+        "PGF_OBSERVABILITY__METRICS_ENABLED": "true"
+      }
+    },
+    {
+      "name": "demo (no database) · localhost:8600",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/postgresqlmodule/code/run_demo.py",
+      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+      "cwd": "${workspaceFolder}/postgresqlmodule/code",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "PGF_SERVER__PORT": "8600"
+      }
+    },
+    {
+      "name": "service · raw SQL enabled (dev only)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pgfoundation_api.run_local",
+      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+      "cwd": "${workspaceFolder}/postgresqlmodule/code",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PGF_CONFIG": "${workspaceFolder}/postgresqlmodule/code/config/pgfoundation.yaml",
+        // The dev profile is required: config refuses raw SQL with auth disabled
+        // anywhere else, because that combination must never ship (doc 05 §5.5).
+        "PGF_PROFILE": "dev",
+        "PGF_SERVER__PORT": "8600",
+        "PGF_API__ENABLE_RAW_SQL": "true"
+      }
+    },
+    {
+      "name": "pytest · all (no database needed)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q"],
+      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+      "cwd": "${workspaceFolder}/postgresqlmodule/code",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "pytest · current file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q", "${file}"],
+      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+      "cwd": "${workspaceFolder}/postgresqlmodule/code",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "pytest · incl. live PostgreSQL",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q"],
+      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+      "cwd": "${workspaceFolder}/postgresqlmodule/code",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      // PGF_TEST_DSN comes from .env; without it the 4 integration tests skip.
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "perf · load report",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      // -s so the latency tables print; they are the point of this run.
+      "args": ["tests/load", "-s", "-q"],
+      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
+      "cwd": "${workspaceFolder}/postgresqlmodule/code",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}

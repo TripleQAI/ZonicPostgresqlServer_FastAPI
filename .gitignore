@@ -1,0 +1,90 @@
+# ---------------------------------------------------------------------------
+# Secrets — never committed
+# ---------------------------------------------------------------------------
+# Credentials live in the environment, never in the repository: the config file
+# names the data source, the environment supplies the secret
+# (documentations/12-deployment-targets.md, section 12.2).
+.env
+.env.*
+!.env.example
+
+# A local config overlay, if you keep one outside the committed profiles.
+postgresqlmodule/code/config/*.local.yaml
+postgresqlmodule/code/config/pgfoundation.local.yaml
+
+# TLS material, should a deployment ever need a CA bundle on disk.
+*.pem
+*.key
+*.crt
+*.p12
+
+# ---------------------------------------------------------------------------
+# Python virtualenv
+# ---------------------------------------------------------------------------
+# ~163 MB, fully reproducible. Recreate with:
+#   py -3.14 -m venv postgresqlmodule/venv314
+#   postgresqlmodule/venv314/Scripts/python -m pip install -r postgresqlmodule/code/requirements.txt
+postgresqlmodule/venv314/
+.venv/
+venv/
+
+# ---------------------------------------------------------------------------
+# Python build artifacts
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ---------------------------------------------------------------------------
+# Tooling caches
+# ---------------------------------------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.import_linter_cache/
+.dmypy.json
+
+# ---------------------------------------------------------------------------
+# Test & benchmark output
+# ---------------------------------------------------------------------------
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.benchmarks/
+*.prof
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+*.log
+
+# ---------------------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------------------
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------------------
+# Deliberately COMMITTED — listed so nobody "tidies" them away later
+# ---------------------------------------------------------------------------
+# .vscode/launch.json + settings.json  — the localhost run configurations are a
+#     shared developer artifact, and they hold no secrets (they read .env).
+# .env.example                          — the template, no real credentials.
+# postgresqlmodule/code/config/*.yaml   — structure and tunables only; DSNs are
+#     ${env:...} references.
+# tests/contract/openapi.v1.snapshot.json — the wire-contract baseline; a diff
+#     here is supposed to be reviewed, not regenerated silently.
+# curls/*.json, curls/*.md              — generated, but committed so the API is
+#     usable without running the generator first.
+!.vscode/launch.json
+!.vscode/settings.json

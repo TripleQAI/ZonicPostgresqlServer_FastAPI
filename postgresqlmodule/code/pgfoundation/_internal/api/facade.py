@@ -86,6 +86,20 @@ class DataFoundation:
         await foundation.start()
         return foundation
 
+    @staticmethod
+    def check_config(source: str | Path | dict[str, Any]) -> list[DataSourceName]:
+        """Validate configuration without opening a single connection.
+
+        Returns the configured data-source names, or raises :class:`ConfigError`.
+
+        Exists so a launcher can fail **before** binding a port. Without it the
+        first sign of a bad config is a `ConfigError` at the bottom of an ASGI
+        lifespan traceback, after the server has already started announcing
+        itself — which reads like a crash rather than "you forgot to set a
+        variable". Also the basis of a `config check` ops command.
+        """
+        return [ds.name for ds in load_settings(source).datasources]
+
     @classmethod
     async def from_config(
         cls,

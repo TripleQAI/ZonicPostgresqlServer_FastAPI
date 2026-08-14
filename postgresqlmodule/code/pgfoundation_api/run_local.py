@@ -25,13 +25,56 @@ if _CODE_ROOT not in sys.path:
     sys.path.insert(0, _CODE_ROOT)
 
 
+def _explain(exc: Exception) -> None:
+    """Turn a startup failure into something actionable.
+
+    The config loader is right to fail hard on an unresolved reference — a DSN
+    that silently defaults to nothing is how you end up connected to the wrong
+    database. But "unresolved config reference: ${env:PGF_MAIN_DSN}" at the
+    bottom of a lifespan traceback does not tell a developer *where* to set it,
+    and that is the launcher's job to say.
+    """
+    message = str(exc)
+    print(f"\n  Startup failed: {message}\n", file=sys.stderr)
+
+    if "unresolved config reference" in message and "env:" in message:
+        var = message.split("env:")[-1].rstrip("} ")
+        root = Path(__file__).resolve().parents[3]
+        print(
+            # ASCII only: this prints to a Windows console that is usually cp1252,
+            # where a section sign or em dash arrives as a replacement character
+            # and makes a helpful message look like a second bug.
+            f"  The config file references ${{env:{var}}}, which is not set in this\n"
+            f"  environment. Credentials deliberately live outside the repository\n"
+            f"  (documentations/12-deployment-targets.md, section 12.2), so set it in:\n\n"
+            f"      {root / '.env'}\n\n"
+            f"  Copy the template if you have not already:\n\n"
+            f"      copy .env.example .env\n\n"
+            f"  The VS Code launch configurations load that file automatically.\n"
+            f"  No database to hand? Run the demo instead - it needs none:\n\n"
+            f"      python run_demo.py\n",
+            file=sys.stderr,
+        )
+
+
 def main() -> None:
     import uvicorn
 
+    from pgfoundation import ConfigError, DataFoundation
     from pgfoundation_api.app import create_app
     from pgfoundation_api.settings import load_service_settings
 
-    settings = load_service_settings()
+    # Preflight, before uvicorn binds the port. A config error announced *after*
+    # "Uvicorn running on..." reads like a crash; announced here it reads like
+    # the instruction it actually is.
+    try:
+        settings = load_service_settings()
+        if settings.config_path:
+            names = DataFoundation.check_config(settings.config_path)
+            print(f"  config OK — data sources: {', '.join(names)}")
+    except ConfigError as exc:
+        _explain(exc)
+        raise SystemExit(2) from None
     config = uvicorn.Config(
         create_app(settings),
         host=settings.server.host,

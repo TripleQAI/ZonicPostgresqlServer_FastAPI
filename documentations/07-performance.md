@@ -130,6 +130,31 @@ The largest single lever, and already right in the core:
 The last three are new and are the ones that prove requirement 4 rather than
 assert it.
 
+### Measured (P5.7)
+
+`pytest tests/load -s -q`. A fake driver supplies the database latency, so these
+isolate **framework** cost; they are not a substitute for the live load test
+against the real instance ([12](./12-deployment-targets.md)).
+
+| Measurement | Result | Budget |
+|-------------|--------|--------|
+| Shell overhead at ~16 ms DB latency | **0.13 ms p50 — 1% of the request** | < 5% p50 ✅ |
+| Shell cost with no DB latency | ~2.0 ms p50 | the regression detector |
+| **Parallel batch of 10 vs 10 unary calls** | **10.5× faster** | > 2× ✅ |
+| **Sequential batch of 10 vs 10 unary calls** | **8.5× faster** (framework amortized) | > 2× ✅ |
+
+Two caveats that matter for reading these:
+
+- **Windows timer granularity is ~15.6 ms**, so the "5 ms" simulated latency
+  actually lands near 16 ms. That makes the overhead *share* conservative — a
+  longer database call only shrinks the shell's fraction — but absolute figures
+  are not comparable across operating systems. The CI gates are therefore
+  **ratios**, not milliseconds.
+- **The sequential-mode measurement uses zero database latency on purpose.**
+  With a slow database the amortization is real but arithmetically invisible:
+  10 × 16 ms of database time dwarfs the ~19 ms of framework work being saved,
+  and the comparison would measure the sleep rather than the thing under test.
+
 ## 7.10 Anti-bloat rules
 
 - No reflection or schema introspection on the hot path.

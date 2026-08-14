@@ -1353,6 +1353,31 @@ The largest single lever, and already right in the core:
 The last three are new and are the ones that prove requirement 4 rather than
 assert it.
 
+##### Measured (P5.7)
+
+`pytest tests/load -s -q`. A fake driver supplies the database latency, so these
+isolate **framework** cost; they are not a substitute for the live load test
+against the real instance ([12](#doc-12)).
+
+| Measurement | Result | Budget |
+|-------------|--------|--------|
+| Shell overhead at ~16 ms DB latency | **0.13 ms p50 — 1% of the request** | < 5% p50 ✅ |
+| Shell cost with no DB latency | ~2.0 ms p50 | the regression detector |
+| **Parallel batch of 10 vs 10 unary calls** | **10.5× faster** | > 2× ✅ |
+| **Sequential batch of 10 vs 10 unary calls** | **8.5× faster** (framework amortized) | > 2× ✅ |
+
+Two caveats that matter for reading these:
+
+- **Windows timer granularity is ~15.6 ms**, so the "5 ms" simulated latency
+  actually lands near 16 ms. That makes the overhead *share* conservative — a
+  longer database call only shrinks the shell's fraction — but absolute figures
+  are not comparable across operating systems. The CI gates are therefore
+  **ratios**, not milliseconds.
+- **The sequential-mode measurement uses zero database latency on purpose.**
+  With a slow database the amortization is real but arithmetically invisible:
+  10 × 16 ms of database time dwarfs the ~19 ms of framework work being saved,
+  and the comparison would measure the sleep rather than the thing under test.
+
 #### 7.10 Anti-bloat rules
 
 - No reflection or schema introspection on the hot path.
@@ -3095,7 +3120,7 @@ change.
 What is actually implemented, as against the plan in
 [13](#doc-13). Updated as phases land.
 
-**Last updated:** 2026-08-13 · **Suite:** 212 passed, 4 skipped (live PostgreSQL)
+**Last updated:** 2026-08-13 · **Suite:** 217 passed, 4 skipped (live PostgreSQL)
 · ruff clean · mypy clean · 4 architecture contracts kept.
 
 #### 14.1 Phase status
@@ -3107,7 +3132,7 @@ What is actually implemented, as against the plan in
 | **P2** — batch & parallel | ✅ **complete** | Three strategies, admission control, pipeline seam. P2.14 (load comparison) deferred to P5 with the load harness. |
 | **P3** — streaming | ✅ **complete** | NDJSON + SSE, subscribe, and the four operations the Django docs designed but never built. P3.11 (live integration) blocked — see §14.4. |
 | **P4** — hardening & security | 🟡 **mostly** | 8 of 9 concurrency defects closed; caller auth + policy shipped. P4.10/P4.11 are deployment artifacts. |
-| **P5** — performance & ops | 🟡 **mostly** | `row_format`, prepared-statement tuning, per-source `itersize`, the metrics adapter, `/metrics`, and the request/batch/admission/auth signals are all done. Micro-benchmarks and the SLO load tests remain. |
+| **P5** — performance & ops | ✅ **complete** | `row_format`, prepared-statement tuning, per-source `itersize`, the metrics adapter, `/metrics`, the request/batch/admission/auth signals, and the benchmark harness with CI gates. Measured: **parallel batch 10.5×**, shell overhead **1%** of a realistic request ([07 §7.9](#doc-07)). |
 
 #### 14.2 What the code delivers today
 
@@ -3156,7 +3181,8 @@ reading the code — `ConnectionPort` missing `copy_stream`/`listen`, and
 | **P3.11 live integration tests** | Needs `PGF_TEST_DSN`. **Confirm first whether port `32064` is a direct or transaction-pooled endpoint** ([12 §12.6](#doc-12)) — under a transaction pooler, server-side cursors, `LISTEN/NOTIFY` and session `SET` all break, and the tests would fail for environmental reasons rather than code ones. |
 | **P4.7 partial** | The pinned-connection isolation invariant is asserted in `UnitOfWork`; the live isolation-level test belongs with P3.11. |
 | **P4.10/P4.11** | Prod-profile assertions exist in `config/profiles/prod.yaml`; the least-privilege database role and `sslmode=verify-full` are deployment actions against the real instance. |
-| **P5 remainder** | Micro-benchmarks with a CI regression gate, and the SLO load tests from [07 §7.9](#doc-07). The remaining `OBSERVE` markers are trace/log points — the metric points are implemented; spans and structured logs await an external provider to bind to. |
+| **Trace and log emission** | The metric points are implemented and gated. The remaining `OBSERVE` markers are `TRACE` and `LOG` points, which need a real `TracerPort` / `LoggerPort` adapter to bind to — per ADR-014 that adapter belongs to the external observability project. |
+| **Soak test (P5.9)** | Hours-long leak detection needs a live database and a scheduler; belongs with P3.11. |
 | **Public-surface strict typing** | Deliberately deferred: enabling `disallow_untyped_defs` surfaces two ported untyped defs, so the flip is scheduled with their annotations. The override sits commented in `pyproject.toml`. |
 
 #### 14.5 Operational constraint

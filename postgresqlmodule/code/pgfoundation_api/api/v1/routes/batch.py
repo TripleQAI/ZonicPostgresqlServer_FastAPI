@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 
@@ -21,7 +21,7 @@ from ....batch.strategies.base import BatchContext, ExecutionStrategy, envelope
 from ....batch.strategies.parallel import ParallelStrategy
 from ....batch.strategies.sequential import SequentialPipelineStrategy
 from ....batch.strategies.transactional import TransactionalStrategy
-from ....bootstrap.deps import get_foundation, get_settings
+from ....bootstrap.deps import get_foundation, get_metrics, get_settings
 from ....security.gate import Principal, authorize_global
 from ....settings import ServiceSettings
 from ..operations import OPERATION_BY_ID
@@ -61,6 +61,7 @@ async def run_batch(
     foundation: Annotated[DataFoundation, Depends(get_foundation)],
     settings: Annotated[ServiceSettings, Depends(get_settings)],
     limiter: Annotated[AdmissionLimiter, Depends(get_limiter)],
+    metrics: Annotated[Any, Depends(get_metrics)],
     principal: Annotated[Principal, Depends(authorize_global("write", "batch"))],  # noqa: ARG001
 ) -> BatchResult:
     cfg = settings.batch
@@ -92,8 +93,9 @@ async def run_batch(
     )
 
     started = time.perf_counter()
-    # OBSERVE (METRIC): pgf_batch_requests_total{mode}, pgf_batch_items{mode}
-    # OBSERVE (TRACE):  span "pgf.batch" {mode, items}
+    metrics.incr("pgf_batch_requests_total", 1, mode=mode)
+    metrics.observe("pgf_batch_items", len(body.items), mode=mode)
+    peak_before = limiter.peak_in_flight
     strategy = STRATEGIES[mode]()
     try:
         async with asyncio.timeout(total_timeout / 1000.0):
@@ -101,7 +103,17 @@ async def run_batch(
     except TimeoutError:
         raise QueryError(f"batch exceeded its {total_timeout}ms budget") from None
 
-    return envelope(mode, results, started)
+    metrics.observe("pgf_batch_duration_seconds", time.perf_counter() - started, mode=mode)
+    # THE signal that proves the fan-out is real (doc 11 §11.3). A peak far below
+    # the configured cap means something upstream is serializing, and no latency
+    # metric would tell you that.
+    metrics.gauge(
+        "pgf_batch_concurrency_peak", max(limiter.peak_in_flight - peak_before, 0), mode=mode
+    )
+    out = envelope(mode, results, started)
+    for item in out.results:
+        metrics.incr("pgf_batch_items_total", 1, mode=mode, status=item.status)
+    return out
 
 
 __all__ = ["router"]

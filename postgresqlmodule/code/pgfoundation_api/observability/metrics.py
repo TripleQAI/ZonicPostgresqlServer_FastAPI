@@ -25,7 +25,18 @@ from typing import Any
 #: pool acquires, single-digit-millisecond point reads, and a long tail for
 #: streams and batches.
 DEFAULT_BUCKETS: tuple[float, ...] = (
-    0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    0.001,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
 )
 
 #: Labels we accept, and the closed set of values each may take (doc 11 §11.9).

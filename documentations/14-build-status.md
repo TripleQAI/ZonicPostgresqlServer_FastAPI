@@ -3,7 +3,7 @@
 What is actually implemented, as against the plan in
 [13](./13-implementation-plan.md). Updated as phases land.
 
-**Last updated:** 2026-08-13 · **Suite:** 198 passed, 4 skipped (live PostgreSQL)
+**Last updated:** 2026-08-13 · **Suite:** 212 passed, 4 skipped (live PostgreSQL)
 · ruff clean · mypy clean · 4 architecture contracts kept.
 
 ## 14.1 Phase status
@@ -15,7 +15,7 @@ What is actually implemented, as against the plan in
 | **P2** — batch & parallel | ✅ **complete** | Three strategies, admission control, pipeline seam. P2.14 (load comparison) deferred to P5 with the load harness. |
 | **P3** — streaming | ✅ **complete** | NDJSON + SSE, subscribe, and the four operations the Django docs designed but never built. P3.11 (live integration) blocked — see §14.4. |
 | **P4** — hardening & security | 🟡 **mostly** | 8 of 9 concurrency defects closed; caller auth + policy shipped. P4.10/P4.11 are deployment artifacts. |
-| **P5** — performance & ops | 🟡 **partly** | `row_format`, prepared-statement tuning and per-source `itersize` done. The `OBSERVE` markers, provider binding and SLO load tests remain. |
+| **P5** — performance & ops | 🟡 **mostly** | `row_format`, prepared-statement tuning, per-source `itersize`, the metrics adapter, `/metrics`, and the request/batch/admission/auth signals are all done. Micro-benchmarks and the SLO load tests remain. |
 
 ## 14.2 What the code delivers today
 
@@ -37,6 +37,7 @@ row plus a DTO.
 | OpenAPI + Swagger UI + ReDoc | ✅ generated |
 | Caller auth + coarse policy ([ADR-008](./adr/ADR-008-auth-boundary.md)) | ✅ mesh-identity and shared-secret providers shipped |
 | `row_format: dict \| tuple` ([ADR-007](./adr/ADR-007-serialization-and-row-format.md)) | ✅ new — driver-level row factory, not post-processing |
+| `/metrics` + a `MetricsPort` adapter ([11](./11-observability-instrumentation-points.md)) | ✅ new — Prometheus text, Null Object by default, cardinality enforced in code |
 
 ## 14.3 Corrections made while building
 
@@ -49,6 +50,7 @@ Recorded here rather than quietly implemented differently from the design.
 | [ADR-003](./adr/ADR-003-declarative-operation-registry.md) | Added the `invoke` override for operations whose handle call is not `method(one_argument)`, and consolidated on `spec.call()`. |
 | [09 §9.1](./09-project-structure.md) | `registry/mappers.py` lives at `api/v1/mappers.py` — mappers are version-specific, the engine is not. `security/providers.py` was added by P4.8. |
 | [07 §7.5](./07-performance.md) | `row_format` is bound **on the handle** (`foundation.datasource(name, row_format=…)`) rather than passed per call, so adding it did not change nine operation signatures. The driver-level row factory — the part that matters — is as designed. |
+| [11 §11.3](./11-observability-instrumentation-points.md) | `pgf_http_requests_inflight` is **unlabelled**: middleware runs before routing, so the route template is not resolvable on the way in, and the concrete path would mint a series per data source. |
 | [08 §8.2](./08-api-surface.md) | `columns` is **absent**, not `null`, in dict format. Emitting `"columns": null` on every read would be a visible wire change for a feature the caller never opted into, so the generated routes serialize with `exclude_none`. |
 
 Two findings the type checker produced that the design had also reached by
@@ -62,7 +64,7 @@ reading the code — `ConnectionPort` missing `copy_stream`/`listen`, and
 | **P3.11 live integration tests** | Needs `PGF_TEST_DSN`. **Confirm first whether port `32064` is a direct or transaction-pooled endpoint** ([12 §12.6](./12-deployment-targets.md)) — under a transaction pooler, server-side cursors, `LISTEN/NOTIFY` and session `SET` all break, and the tests would fail for environmental reasons rather than code ones. |
 | **P4.7 partial** | The pinned-connection isolation invariant is asserted in `UnitOfWork`; the live isolation-level test belongs with P3.11. |
 | **P4.10/P4.11** | Prod-profile assertions exist in `config/profiles/prod.yaml`; the least-privilege database role and `sslmode=verify-full` are deployment actions against the real instance. |
-| **P5 remainder** | Implementing the 26 `OBSERVE` markers, binding an observability provider, `/metrics`, micro-benchmarks and the SLO load tests. |
+| **P5 remainder** | Micro-benchmarks with a CI regression gate, and the SLO load tests from [07 §7.9](./07-performance.md). The remaining `OBSERVE` markers are trace/log points — the metric points are implemented; spans and structured logs await an external provider to bind to. |
 | **Public-surface strict typing** | Deliberately deferred: enabling `disallow_untyped_defs` surfaces two ported untyped defs, so the flip is scheduled with their annotations. The override sits commented in `pyproject.toml`. |
 
 ## 14.5 Operational constraint

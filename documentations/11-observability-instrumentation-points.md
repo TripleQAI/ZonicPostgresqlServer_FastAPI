@@ -61,7 +61,7 @@ per-capability one, which is the difference between "the database is slow" and
 
 | Point | Signals |
 |-------|---------|
-| Request in / out (middleware) | `METRIC` `pgf_http_requests_total{route,method,status,version}`, `pgf_http_request_duration_seconds{route,method}`, `pgf_http_requests_inflight{route}` · `TRACE` root span `http.request`, continuing any inbound trace context. The `version` label is what answers "is anyone still on v1?" before it is switched off ([09 §9.1b](./09-project-structure.md)) |
+| Request in / out (middleware) | `METRIC` `pgf_http_requests_total{route,method,status,version}`, `pgf_http_request_duration_seconds{route,method}`, `pgf_http_requests_inflight` (**unlabelled — see below**) · `TRACE` root span `http.request`, continuing any inbound trace context. The `version` label is what answers "is anyone still on v1?" before it is switched off ([09 §9.1b](./09-project-structure.md)) |
 | Correlation id | `LOG` every event carries `request_id`; echoed as `X-Request-Id` (§11.7) |
 | Request validation failure | `METRIC` `pgf_http_requests_total{status="400"}` · `LOG` `request.invalid` — **field names only, never field values** |
 | Auth check (`Depends(authorize(...))`) | `METRIC` `pgf_auth_checks_total{action,result}` where result ∈ `allow`/`deny`/`unauthenticated` · `TRACE` span `auth.check` · `LOG` `auth.denied {action, resource, subject}` |
@@ -137,6 +137,25 @@ per-capability one, which is the difference between "the database is slow" and
 | Config invalid | `LOG` `config.invalid {error}` then exit — fail fast, and the log line is the only artifact the operator gets |
 | Unresolved `${env:}` / `${secret:}` | `LOG` `config.unresolved {reference}` — **the reference name, not the resolved value** |
 | Shutdown | `LOG` `service.shutdown {inflight, drained_ms, forced}` · `METRIC` `pgf_shutdown_drain_seconds` |
+
+### Implemented (P5.5) — two deviations from the above
+
+1. **`pgf_http_requests_inflight` carries no `route` label.** Middleware runs
+   *before* routing, so `scope["route"]` is not yet populated on the way in and
+   the only label available would be the concrete path — which embeds the
+   data-source name and mints a series per source per route. The gauge must
+   increment and decrement with identical labels, so it is unlabelled. Total
+   in-flight is also the number that drives capacity decisions; per-route
+   in-flight rarely is.
+2. **`route` is read after `call_next`.** Routing mutates the same scope dict in
+   place, so the template is available on the way out. Requests that matched no
+   route report `route="unmatched"` rather than their raw path.
+
+Cardinality is **enforced**, not documented: `MetricsCollector` raises on a
+forbidden label (`request_id`, `sql`, `subject`, …), raises on an undeclared
+one, and folds an out-of-range enum value into `"other"` rather than minting a
+series. A test asserts eight data sources through one route template stay under
+30 total series.
 
 ## 11.4 Trace shape
 

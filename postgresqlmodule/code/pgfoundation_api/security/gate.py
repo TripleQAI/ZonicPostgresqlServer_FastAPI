@@ -12,6 +12,8 @@ from typing import Any
 
 from fastapi import Depends, Path, Request
 
+from pgfoundation._internal.observability.noop import NoopMetrics
+
 from ..settings import AuthSettings
 from .policy import PolicyAuthorizer
 from .ports import (
@@ -40,8 +42,10 @@ class AuthGate:
         enabled: bool = False,
         authenticator: AuthenticatorPort | None = None,
         authorizer: AuthorizerPort | None = None,
+        metrics: Any = None,
     ) -> None:
         self.enabled = enabled
+        self._metrics = metrics or NoopMetrics()
         if enabled and (authenticator is None or authorizer is None):
             raise RuntimeError(
                 "auth.enabled=true but no auth provider registered — refusing to start"
@@ -55,20 +59,27 @@ class AuthGate:
 
         principal = await self._authn.authenticate(request)
         if principal is None:
-            # OBSERVE (METRIC): pgf_auth_checks_total{action, result="unauthenticated"}
+            self._metrics.incr("pgf_auth_checks_total", 1, action=action, result="unauthenticated")
             raise AuthenticationError("authentication required")
 
         if not await self._authz.authorize(principal, action, resource):
-            # OBSERVE (METRIC): pgf_auth_checks_total{action, result="deny"}
-            # OBSERVE (LOG):    auth.denied {action, resource, subject}
-            #                   — the SUBJECT, never the credential (doc 11 §11.8)
+            # `subject` is deliberately NOT a metric label — it is unbounded in
+            # principle and belongs in the log event instead (doc 11 §11.9).
+            # OBSERVE (LOG): auth.denied {action, resource, subject} — the
+            #                subject, never the credential (doc 11 §11.8)
+            self._metrics.incr("pgf_auth_checks_total", 1, action=action, result="deny")
             raise AuthorizationError(f"not permitted: {action} {resource}")
 
-        # OBSERVE (METRIC): pgf_auth_checks_total{action, result="allow"}
+        self._metrics.incr("pgf_auth_checks_total", 1, action=action, result="allow")
         return principal
 
 
-def build_auth_gate(settings: AuthSettings, *, api_keys: dict[str, str] | None = None) -> AuthGate:
+def build_auth_gate(
+    settings: AuthSettings,
+    *,
+    api_keys: dict[str, str] | None = None,
+    metrics: Any = None,
+) -> AuthGate:
     """Composition-root helper: resolve providers from config (ADR-008 §3, P4.8).
 
     ``api_keys`` maps subject -> key and is supplied by the platform's secret
@@ -80,7 +91,7 @@ def build_auth_gate(settings: AuthSettings, *, api_keys: dict[str, str] | None =
     service.
     """
     if not settings.enabled:
-        return AuthGate(enabled=False)
+        return AuthGate(enabled=False, metrics=metrics)
 
     authenticator: AuthenticatorPort
     if settings.provider == "mtls":
@@ -98,6 +109,7 @@ def build_auth_gate(settings: AuthSettings, *, api_keys: dict[str, str] | None =
         enabled=True,
         authenticator=authenticator,
         authorizer=PolicyAuthorizer(settings.policy),
+        metrics=metrics,
     )
 
 

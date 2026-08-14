@@ -18,8 +18,8 @@ from fastapi import FastAPI
 from . import ops
 from .api import versions
 from .batch.limits import AdmissionLimiter
-from .bootstrap.providers import build_metrics
 from .bootstrap.lifespan import lifespan
+from .bootstrap.providers import build_metrics
 from .errors import register_exception_handlers
 from .middleware.correlation import CorrelationMiddleware
 from .middleware.timing import TimingMiddleware
@@ -68,10 +68,10 @@ def create_app(
     # observability provider. Default is a Null Object, so nothing is paid for
     # until a deployment turns it on.
     app.state.metrics = build_metrics(settings.observability)
-    app.state.auth_gate = build_auth_gate(settings.auth)
+    app.state.auth_gate = build_auth_gate(settings.auth, metrics=app.state.metrics)
     # Admission control: bounds in-flight DB work so overload sheds fast
     # instead of collapsing into pool timeouts (doc 06 §6.6).
-    app.state.limiter = AdmissionLimiter(settings.concurrency)
+    app.state.limiter = AdmissionLimiter(settings.concurrency, app.state.metrics)
 
     # Cross-cutting. Order matters: correlation runs outermost so every log line
     # and every error body carries the request id. (P2 adds the admission limiter

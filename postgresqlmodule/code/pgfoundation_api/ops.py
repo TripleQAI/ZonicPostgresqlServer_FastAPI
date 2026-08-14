@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from pgfoundation import DataFoundation, HealthStatus
@@ -81,6 +82,27 @@ async def ready(
     if out.status == "down":
         response.status_code = 503
     return out
+
+
+@router.get(
+    "/metrics",
+    summary="Prometheus metrics",
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+)
+async def metrics(request: Request) -> PlainTextResponse:
+    """Scrape endpoint (P5.6).
+
+    Unversioned, like the probes: a scrape config pinned to ``/v1/metrics`` would
+    have to be edited the day v1 retires (doc 09 §9.1b).
+
+    Empty body when ``observability.metrics_enabled`` is false — the Null Object
+    has nothing to render, and that is the zero-cost default ADR-014 depends on
+    rather than an error condition.
+    """
+    collector = request.app.state.metrics
+    body = collector.render() if hasattr(collector, "render") else ""
+    return PlainTextResponse(body, media_type="text/plain; version=0.0.4")
 
 
 __all__ = ["router", "roll_up", "HealthOut"]

@@ -31,34 +31,58 @@ OUT_DIR = Path(__file__).parent
 
 # --------------------------------------------------------------------------- #
 # Curated example bodies, keyed by the operation id in the registry.
+#
+# Every READ example below runs as-is against the deployed `main` data source
+# (Tiger Cloud `tsdb`) — no setup, no imagined schema. They were previously
+# written against demo objects that do not exist there, so an imported
+# collection returned `relation ... does not exist` on almost every request.
+#
+# The WRITE examples (`execute`, `execute_many`, `copy`) deliberately do NOT
+# point at the real application tables — an imported collection must not modify
+# live data on first click. They target a scratch table; `CURLS.md` ships the
+# one statement that creates it.
+#
+# Note `agentBuilder_agentworkflow`: the relation is MIXED CASE. In raw SQL it
+# must be quoted (`public."agentBuilder_agentworkflow"`), because PostgreSQL
+# folds unquoted identifiers to lower case. The name-based operations quote it
+# for you — that is the whole point of using them.
 # --------------------------------------------------------------------------- #
+SCRATCH = "pgf_demo_orders"  # created by the setup SQL in CURLS.md
+
 EXAMPLES: dict[str, dict] = {
     "view": {
-        "name": "v_paid_orders",
-        "columns": ["id", "customer", "amount"],
-        "filters": [{"column": "customer", "op": "eq", "value": "bob"}],
-        "order_by": [{"column": "id"}],
+        "name": "agentBuilder_agentworkflow",
+        "schema": "public",
+        "columns": ["id", "name", "display_name"],
+        "filters": [{"column": "name", "op": "ilike", "value": "%agent%"}],
+        "order_by": [{"column": "name"}],
         "limit": 100,
     },
-    "function": {"name": "fn_orders_by_customer", "args": {"cust": "bob"}},
-    "procedure": {"name": "sp_customer_stats", "args": ["bob", None, None]},
+    # `now()` is a built-in, so this works on any database. Swap in your own
+    # set-returning function and drop `scalar` to get rows instead.
+    "function": {"name": "now", "scalar": True},
+    # No stored procedure ships with this schema — CALL needs one you own.
+    "procedure": {"name": "pgf_demo_touch", "args": [1]},
     "interval": {
-        "source": "demo_readings",
-        "time_column": "ts",
-        "start": "2026-08-13T00:00:00Z",
-        "end": "2026-08-14T00:00:00Z",
-        "every": "15 minutes",
-        "metrics": [{"column": "kwh", "func": "sum"}],
-        "group_by": ["meter_id"],
+        "source": "public.aiplatform_node_execution_log",
+        "time_column": "started_at",
+        "start": "2026-06-16T00:00:00Z",
+        "end": "2026-07-29T00:00:00Z",
+        "every": "1 day",
+        "metrics": [
+            {"column": "duration_ms", "func": "avg", "alias": "avg_ms"},
+            {"column": "id", "func": "count", "alias": "runs"},
+        ],
+        "group_by": ["status"],
     },
     "fetch_since": {
-        "sql": "SELECT ts, id, kwh FROM demo_readings WHERE meter_id = %(m)s",
-        "params": {"m": 1},
-        "cursor": {"order_by": ["ts", "id"], "after": None},
+        "sql": "SELECT started_at, id, node_name FROM public.aiplatform_node_execution_log",
+        "params": {},
+        "cursor": {"order_by": ["started_at", "id"], "after": None},
         "limit": 1000,
     },
     "execute_many": {
-        "sql": "INSERT INTO demo_orders (id, customer, amount, status) "
+        "sql": f"INSERT INTO {SCRATCH} (id, customer, amount, status) "
         "VALUES (%(id)s, %(c)s, %(a)s, 'paid')",
         "params_seq": [
             {"id": 101, "c": "carol", "a": "12.00"},
@@ -66,16 +90,18 @@ EXAMPLES: dict[str, dict] = {
         ],
     },
     "copy": {
-        "table": "demo_orders",
+        "table": SCRATCH,
         "rows": [[201, "erin", "31.00", "paid"], [202, "frank", "5.50", "paid"]],
     },
+    # Raw SQL: the relation is mixed case, so it MUST be quoted here.
     "query": {
-        "sql": "SELECT id, customer, amount FROM demo_orders WHERE status = %(s)s LIMIT %(n)s",
-        "params": {"s": "paid", "n": 10},
+        "sql": 'SELECT id, name, display_name FROM public."agentBuilder_agentworkflow" '
+        "ORDER BY name LIMIT %(n)s",
+        "params": {"n": 10},
     },
     "execute": {
-        "sql": "UPDATE demo_orders SET status = %(s)s WHERE id = %(id)s",
-        "params": {"s": "shipped", "id": 1},
+        "sql": f"UPDATE {SCRATCH} SET status = %(s)s WHERE id = %(id)s",
+        "params": {"s": "shipped", "id": 101},
     },
 }
 
@@ -101,13 +127,17 @@ BATCH_EXAMPLES = [
                     "id": "orders",
                     "datasource": "{{datasource}}",
                     "op": "view",
-                    "payload": {"name": "v_paid_orders", "limit": 50},
+                    "payload": {
+                        "name": "agentBuilder_agentworkflow",
+                        "schema": "public",
+                        "limit": 50,
+                    },
                 },
                 {
                     "id": "totals",
                     "datasource": "{{datasource}}",
                     "op": "function",
-                    "payload": {"name": "fn_orders_by_customer", "args": {"cust": "bob"}},
+                    "payload": {"name": "now", "scalar": True},
                 },
             ],
         },
@@ -124,7 +154,11 @@ BATCH_EXAMPLES = [
                     "id": f"s{i}",
                     "datasource": "{{datasource}}",
                     "op": "view",
-                    "payload": {"name": "v_paid_orders", "limit": 10},
+                    "payload": {
+                        "name": "django_migrations",
+                        "schema": "public",
+                        "limit": 10,
+                    },
                 }
                 for i in range(3)
             ],
@@ -140,16 +174,23 @@ BATCH_EXAMPLES = [
             "mode": "transactional",
             "items": [
                 {
-                    "id": "debit",
+                    "id": "insert",
                     "datasource": "{{datasource}}",
-                    "op": "procedure",
-                    "payload": {"name": "sp_customer_stats", "args": ["bob", None, None]},
+                    "op": "execute",
+                    "payload": {
+                        "sql": f"INSERT INTO {SCRATCH} (id, customer, amount, status)"
+                        " VALUES (%(id)s, 'grace', '10.00', 'paid')",
+                        "params": {"id": 301},
+                    },
                 },
                 {
-                    "id": "credit",
+                    "id": "update",
                     "datasource": "{{datasource}}",
-                    "op": "procedure",
-                    "payload": {"name": "sp_customer_stats", "args": ["alice", None, None]},
+                    "op": "execute",
+                    "payload": {
+                        "sql": f"UPDATE {SCRATCH} SET status = 'shipped' WHERE id = %(id)s",
+                        "params": {"id": 301},
+                    },
                 },
             ],
         },
@@ -164,19 +205,23 @@ NEGATIVE_CASES = [
         "The identifier is validated, never interpolated. This is the security "
         "boundary the whole name-based surface rests on.",
         "view",
-        {"name": "v_paid_orders; DROP TABLE demo_orders"},
+        {"name": "agentBuilder_agentworkflow; DROP TABLE auth_user"},
     ),
     (
         "400 — operator outside the whitelist",
         "`op` is a closed enum; an unknown operator never reaches SQL.",
         "view",
-        {"name": "v_paid_orders", "filters": [{"column": "id", "op": "; DROP", "value": 1}]},
+        {
+            "name": "agentBuilder_agentworkflow",
+            "schema": "public",
+            "filters": [{"column": "id", "op": "; DROP", "value": 1}],
+        },
     ),
     (
         "404 — unknown data source",
         "Only configured, named sources are addressable. Clients never send a DSN.",
         "view",
-        {"name": "v_paid_orders"},
+        {"name": "django_migrations", "schema": "public"},
     ),
 ]
 
@@ -438,31 +483,48 @@ def write_curls(collection: dict) -> None:
         "A caller is authorized per `datasource x action`, so a read-only caller",
         "gets 403 on `/procedure` even for a source it can read.",
         "",
-        "## Demo objects",
+        "## What the examples run against",
         "",
-        "The examples reference these. Create them once against your database —",
-        "**the foundation owns no schema and will not create them for you**:",
+        "**Read requests work as-is** against the deployed `main` data source",
+        "(Tiger Cloud `tsdb`) — no setup needed. They use objects that are really",
+        "there: `agentBuilder_agentworkflow`, `django_migrations`,",
+        "`aiplatform_node_execution_log`, and the built-in `now()`.",
+        "",
+        "### Mixed-case relations — read this before writing raw SQL",
+        "",
+        "Most tables in this schema were created by Django with a **camelCase**",
+        "name, e.g. `agentBuilder_agentworkflow` (capital **B**). PostgreSQL folds",
+        "an *unquoted* identifier to lower case, so:",
         "",
         "```sql",
-        "CREATE TABLE demo_orders (id int primary key, customer text, amount numeric, status text);",
-        "INSERT INTO demo_orders VALUES",
-        "  (1,'alice',19.90,'paid'),(3,'bob',42.00,'paid'),(4,'bob',7.50,'paid');",
+        "-- fails: the server looks for `agentbuilder_agentworkflow`",
+        "SELECT * FROM public.agentBuilder_agentworkflow LIMIT 10;",
         "",
-        "CREATE VIEW v_paid_orders AS",
-        "  SELECT id, customer, amount FROM demo_orders WHERE status='paid';",
+        "-- works: quoted, so the case is preserved",
+        'SELECT * FROM public."agentBuilder_agentworkflow" LIMIT 10;',
+        "```",
         "",
-        "CREATE FUNCTION fn_orders_by_customer(cust text)",
-        "  RETURNS TABLE(id int, amount numeric) LANGUAGE sql AS $$",
-        "    SELECT id, amount FROM demo_orders WHERE customer = cust ORDER BY id; $$;",
+        "The **name-based operations quote identifiers for you**, so `/view`,",
+        "`/interval` and friends take the plain name and just work:",
         "",
-        "CREATE PROCEDURE sp_customer_stats(",
-        "    IN cust text, INOUT order_count int DEFAULT NULL, INOUT total numeric DEFAULT NULL)",
+        "```json",
+        '{"name": "agentBuilder_agentworkflow", "schema": "public", "limit": 10}',
+        "```",
+        "",
+        "### Scratch table for the write examples",
+        "",
+        "`execute`, `execute_many`, `copy` and the transactional batch deliberately",
+        "do **not** touch application tables — importing a collection should never",
+        "modify live data on the first click. Create the scratch table once:",
+        "",
+        "```sql",
+        f"CREATE TABLE IF NOT EXISTS {SCRATCH} (",
+        "  id int PRIMARY KEY, customer text, amount numeric, status text);",
+        "",
+        "-- only for the /procedure example; CALL needs a procedure that exists",
+        "CREATE OR REPLACE PROCEDURE pgf_demo_touch(IN k int)",
         "  LANGUAGE plpgsql AS $$ BEGIN",
-        "    SELECT count(*), COALESCE(sum(amount),0) INTO order_count, total",
-        "    FROM demo_orders WHERE customer = cust; END; $$;",
-        "",
-        "-- for the interval / fetch-since examples",
-        "CREATE TABLE demo_readings (ts timestamptz, id bigserial, meter_id int, kwh numeric);",
+        f"    UPDATE {SCRATCH} SET status = status WHERE id = k; END; $$;",
         "```",
         "",
         "---",

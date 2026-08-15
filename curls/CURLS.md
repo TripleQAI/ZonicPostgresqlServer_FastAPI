@@ -29,31 +29,48 @@ provider it uses:
 A caller is authorized per `datasource x action`, so a read-only caller
 gets 403 on `/procedure` even for a source it can read.
 
-## Demo objects
+## What the examples run against
 
-The examples reference these. Create them once against your database —
-**the foundation owns no schema and will not create them for you**:
+**Read requests work as-is** against the deployed `main` data source
+(Tiger Cloud `tsdb`) — no setup needed. They use objects that are really
+there: `agentBuilder_agentworkflow`, `django_migrations`,
+`aiplatform_node_execution_log`, and the built-in `now()`.
+
+### Mixed-case relations — read this before writing raw SQL
+
+Most tables in this schema were created by Django with a **camelCase**
+name, e.g. `agentBuilder_agentworkflow` (capital **B**). PostgreSQL folds
+an *unquoted* identifier to lower case, so:
 
 ```sql
-CREATE TABLE demo_orders (id int primary key, customer text, amount numeric, status text);
-INSERT INTO demo_orders VALUES
-  (1,'alice',19.90,'paid'),(3,'bob',42.00,'paid'),(4,'bob',7.50,'paid');
+-- fails: the server looks for `agentbuilder_agentworkflow`
+SELECT * FROM public.agentBuilder_agentworkflow LIMIT 10;
 
-CREATE VIEW v_paid_orders AS
-  SELECT id, customer, amount FROM demo_orders WHERE status='paid';
+-- works: quoted, so the case is preserved
+SELECT * FROM public."agentBuilder_agentworkflow" LIMIT 10;
+```
 
-CREATE FUNCTION fn_orders_by_customer(cust text)
-  RETURNS TABLE(id int, amount numeric) LANGUAGE sql AS $$
-    SELECT id, amount FROM demo_orders WHERE customer = cust ORDER BY id; $$;
+The **name-based operations quote identifiers for you**, so `/view`,
+`/interval` and friends take the plain name and just work:
 
-CREATE PROCEDURE sp_customer_stats(
-    IN cust text, INOUT order_count int DEFAULT NULL, INOUT total numeric DEFAULT NULL)
+```json
+{"name": "agentBuilder_agentworkflow", "schema": "public", "limit": 10}
+```
+
+### Scratch table for the write examples
+
+`execute`, `execute_many`, `copy` and the transactional batch deliberately
+do **not** touch application tables — importing a collection should never
+modify live data on the first click. Create the scratch table once:
+
+```sql
+CREATE TABLE IF NOT EXISTS pgf_demo_orders (
+  id int PRIMARY KEY, customer text, amount numeric, status text);
+
+-- only for the /procedure example; CALL needs a procedure that exists
+CREATE OR REPLACE PROCEDURE pgf_demo_touch(IN k int)
   LANGUAGE plpgsql AS $$ BEGIN
-    SELECT count(*), COALESCE(sum(amount),0) INTO order_count, total
-    FROM demo_orders WHERE customer = cust; END; $$;
-
--- for the interval / fetch-since examples
-CREATE TABLE demo_readings (ts timestamptz, id bigserial, meter_id int, kwh numeric);
+    UPDATE pgf_demo_orders SET status = status WHERE id = k; END; $$;
 ```
 
 ---
@@ -73,22 +90,23 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/view' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "name": "v_paid_orders",
+       "name": "agentBuilder_agentworkflow",
+       "schema": "public",
        "columns": [
          "id",
-         "customer",
-         "amount"
+         "name",
+         "display_name"
        ],
        "filters": [
          {
-           "column": "customer",
-           "op": "eq",
-           "value": "bob"
+           "column": "name",
+           "op": "ilike",
+           "value": "%agent%"
          }
        ],
        "order_by": [
          {
-           "column": "id"
+           "column": "name"
          }
        ],
        "limit": 100
@@ -105,7 +123,7 @@ Authorized as `read` on the data source.
 curl -sS -X POST '$BASE/v1/datasources/$DS/function' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
-  -d '{"name": "fn_orders_by_customer", "args": {"cust": "bob"}}'
+  -d '{"name": "now", "scalar": true}'
 ```
 
 ### procedure
@@ -118,7 +136,7 @@ Authorized as `write` on the data source.
 curl -sS -X POST '$BASE/v1/datasources/$DS/procedure' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
-  -d '{"name": "sp_customer_stats", "args": ["bob", null, null]}'
+  -d '{"name": "pgf_demo_touch", "args": [1]}'
 ```
 
 ### interval
@@ -132,19 +150,25 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/interval' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "source": "demo_readings",
-       "time_column": "ts",
-       "start": "2026-08-13T00:00:00Z",
-       "end": "2026-08-14T00:00:00Z",
-       "every": "15 minutes",
+       "source": "public.aiplatform_node_execution_log",
+       "time_column": "started_at",
+       "start": "2026-06-16T00:00:00Z",
+       "end": "2026-07-29T00:00:00Z",
+       "every": "1 day",
        "metrics": [
          {
-           "column": "kwh",
-           "func": "sum"
+           "column": "duration_ms",
+           "func": "avg",
+           "alias": "avg_ms"
+         },
+         {
+           "column": "id",
+           "func": "count",
+           "alias": "runs"
          }
        ],
        "group_by": [
-         "meter_id"
+         "status"
        ]
      }'
 ```
@@ -160,13 +184,11 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/fetch-since' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "sql": "SELECT ts, id, kwh FROM demo_readings WHERE meter_id = %(m)s",
-       "params": {
-         "m": 1
-       },
+       "sql": "SELECT started_at, id, node_name FROM public.aiplatform_node_execution_log",
+       "params": {},
        "cursor": {
          "order_by": [
-           "ts",
+           "started_at",
            "id"
          ],
          "after": null
@@ -186,7 +208,7 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/execute-many' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "sql": "INSERT INTO demo_orders (id, customer, amount, status) VALUES (%(id)s, %(c)s, %(a)s, 'paid')",
+       "sql": "INSERT INTO pgf_demo_orders (id, customer, amount, status) VALUES (%(id)s, %(c)s, %(a)s, 'paid')",
        "params_seq": [
          {
            "id": 101,
@@ -213,7 +235,7 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/copy' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "table": "demo_orders",
+       "table": "pgf_demo_orders",
        "rows": [
          [
            201,
@@ -254,7 +276,8 @@ curl -sS -X POST '$BASE/v1/batch' \
            "datasource": "$DS",
            "op": "view",
            "payload": {
-             "name": "v_paid_orders",
+             "name": "agentBuilder_agentworkflow",
+             "schema": "public",
              "limit": 50
            }
          },
@@ -263,10 +286,8 @@ curl -sS -X POST '$BASE/v1/batch' \
            "datasource": "$DS",
            "op": "function",
            "payload": {
-             "name": "fn_orders_by_customer",
-             "args": {
-               "cust": "bob"
-             }
+             "name": "now",
+             "scalar": true
            }
          }
        ]
@@ -289,7 +310,8 @@ curl -sS -X POST '$BASE/v1/batch' \
            "datasource": "$DS",
            "op": "view",
            "payload": {
-             "name": "v_paid_orders",
+             "name": "django_migrations",
+             "schema": "public",
              "limit": 10
            }
          },
@@ -298,7 +320,8 @@ curl -sS -X POST '$BASE/v1/batch' \
            "datasource": "$DS",
            "op": "view",
            "payload": {
-             "name": "v_paid_orders",
+             "name": "django_migrations",
+             "schema": "public",
              "limit": 10
            }
          },
@@ -307,7 +330,8 @@ curl -sS -X POST '$BASE/v1/batch' \
            "datasource": "$DS",
            "op": "view",
            "payload": {
-             "name": "v_paid_orders",
+             "name": "django_migrations",
+             "schema": "public",
              "limit": 10
            }
          }
@@ -329,29 +353,25 @@ curl -sS -X POST '$BASE/v1/batch' \
        "mode": "transactional",
        "items": [
          {
-           "id": "debit",
+           "id": "insert",
            "datasource": "$DS",
-           "op": "procedure",
+           "op": "execute",
            "payload": {
-             "name": "sp_customer_stats",
-             "args": [
-               "bob",
-               null,
-               null
-             ]
+             "sql": "INSERT INTO pgf_demo_orders (id, customer, amount, status) VALUES (%(id)s, 'grace', '10.00', 'paid')",
+             "params": {
+               "id": 301
+             }
            }
          },
          {
-           "id": "credit",
+           "id": "update",
            "datasource": "$DS",
-           "op": "procedure",
+           "op": "execute",
            "payload": {
-             "name": "sp_customer_stats",
-             "args": [
-               "alice",
-               null,
-               null
-             ]
+             "sql": "UPDATE pgf_demo_orders SET status = 'shipped' WHERE id = %(id)s",
+             "params": {
+               "id": 301
+             }
            }
          }
        ]
@@ -378,22 +398,23 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/view/stream' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "name": "v_paid_orders",
+       "name": "agentBuilder_agentworkflow",
+       "schema": "public",
        "columns": [
          "id",
-         "customer",
-         "amount"
+         "name",
+         "display_name"
        ],
        "filters": [
          {
-           "column": "customer",
-           "op": "eq",
-           "value": "bob"
+           "column": "name",
+           "op": "ilike",
+           "value": "%agent%"
          }
        ],
        "order_by": [
          {
-           "column": "id"
+           "column": "name"
          }
        ],
        "limit": 100
@@ -413,7 +434,7 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/function/stream' \
   -H 'Accept: application/x-ndjson' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
-  -d '{"name": "fn_orders_by_customer", "args": {"cust": "bob"}}'
+  -d '{"name": "now", "scalar": true}'
 ```
 
 ### query (stream)
@@ -430,9 +451,8 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/query/stream' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "sql": "SELECT id, customer, amount FROM demo_orders WHERE status = %(s)s LIMIT %(n)s",
+       "sql": "SELECT id, name, display_name FROM public.\"agentBuilder_agentworkflow\" ORDER BY name LIMIT %(n)s",
        "params": {
-         "s": "paid",
          "n": 10
        }
      }'
@@ -452,19 +472,25 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/interval/stream' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "source": "demo_readings",
-       "time_column": "ts",
-       "start": "2026-08-13T00:00:00Z",
-       "end": "2026-08-14T00:00:00Z",
-       "every": "15 minutes",
+       "source": "public.aiplatform_node_execution_log",
+       "time_column": "started_at",
+       "start": "2026-06-16T00:00:00Z",
+       "end": "2026-07-29T00:00:00Z",
+       "every": "1 day",
        "metrics": [
          {
-           "column": "kwh",
-           "func": "sum"
+           "column": "duration_ms",
+           "func": "avg",
+           "alias": "avg_ms"
+         },
+         {
+           "column": "id",
+           "func": "count",
+           "alias": "runs"
          }
        ],
        "group_by": [
-         "meter_id"
+         "status"
        ]
      }'
 ```
@@ -556,9 +582,8 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/query' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "sql": "SELECT id, customer, amount FROM demo_orders WHERE status = %(s)s LIMIT %(n)s",
+       "sql": "SELECT id, name, display_name FROM public.\"agentBuilder_agentworkflow\" ORDER BY name LIMIT %(n)s",
        "params": {
-         "s": "paid",
          "n": 10
        }
      }'
@@ -575,10 +600,10 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/execute' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
   -d '{
-       "sql": "UPDATE demo_orders SET status = %(s)s WHERE id = %(id)s",
+       "sql": "UPDATE pgf_demo_orders SET status = %(s)s WHERE id = %(id)s",
        "params": {
          "s": "shipped",
-         "id": 1
+         "id": 101
        }
      }'
 ```
@@ -597,7 +622,7 @@ The identifier is validated, never interpolated. This is the security boundary t
 curl -sS -X POST '$BASE/v1/datasources/$DS/view' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
-  -d '{"name": "v_paid_orders; DROP TABLE demo_orders"}'
+  -d '{"name": "agentBuilder_agentworkflow; DROP TABLE auth_user"}'
 ```
 
 ### 400 — operator outside the whitelist
@@ -608,7 +633,17 @@ curl -sS -X POST '$BASE/v1/datasources/$DS/view' \
 curl -sS -X POST '$BASE/v1/datasources/$DS/view' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
-  -d '{"name": "v_paid_orders", "filters": [{"column": "id", "op": "; DROP", "value": 1}]}'
+  -d '{
+       "name": "agentBuilder_agentworkflow",
+       "schema": "public",
+       "filters": [
+         {
+           "column": "id",
+           "op": "; DROP",
+           "value": 1
+         }
+       ]
+     }'
 ```
 
 ### 404 — unknown data source
@@ -619,7 +654,7 @@ Only configured, named sources are addressable. Clients never send a DSN.
 curl -sS -X POST '$BASE/v1/datasources/no-such-source/view' \
   -H 'Content-Type: application/json' \
   -H 'X-Request-Id: $(uuidgen)' \
-  -d '{"name": "v_paid_orders"}'
+  -d '{"name": "django_migrations", "schema": "public"}'
 ```
 
 ---

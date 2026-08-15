@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from ...core.errors import QueryError
 from ...core.models import Page, Query, WatermarkCursor
-from .sql import safe_identifier
+from .sql import quote_identifier
 
 
 def build_keyset_query(spec: Query, cursor: WatermarkCursor, limit: int) -> Query:
@@ -16,7 +16,7 @@ def build_keyset_query(spec: Query, cursor: WatermarkCursor, limit: int) -> Quer
     if limit <= 0:
         raise QueryError("limit must be positive")
 
-    order_cols = [safe_identifier(c) for c in cursor.order_by]
+    order_cols = [quote_identifier(c) for c in cursor.order_by]
     order_clause = ", ".join(order_cols)
     params = dict(spec.params or {})
 

@@ -40,10 +40,10 @@ def test_compile_interval_generates_parameterized_bucket_sql():
             group_by=["meter_id"],
         )
     )
-    assert "date_bin(%(__every)s::interval, ts, %(__start)s) AS bucket" in q.sql
-    assert "sum(kwh) AS kwh" in q.sql
-    assert "avg(demand_kw) AS demand" in q.sql
-    assert "GROUP BY bucket, meter_id" in q.sql
+    assert 'date_bin(%(__every)s::interval, "ts", %(__start)s) AS bucket' in q.sql
+    assert 'sum("kwh") AS "kwh"' in q.sql
+    assert 'avg("demand_kw") AS "demand"' in q.sql
+    assert 'GROUP BY bucket, "meter_id"' in q.sql
     assert q.params == {"__every": "15 minutes", "__start": "2026-01-01", "__end": "2026-02-01"}
 
 
@@ -72,7 +72,7 @@ def test_keyset_query_first_page_has_no_where():
         limit=100,
     )
     assert "WHERE" not in q.sql.split("__sub")[1]  # no keyset predicate on first page
-    assert "ORDER BY ts, id" in q.sql
+    assert 'ORDER BY "ts", "id"' in q.sql
     assert "LIMIT 100" in q.sql
     assert q.params == {"m": 7}
 
@@ -83,7 +83,7 @@ def test_keyset_query_uses_tuple_comparison_after_watermark():
         WatermarkCursor(order_by=("ts", "id"), after=("2026-01-01", 42)),
         limit=50,
     )
-    assert "(ts, id) > (%(__k0)s, %(__k1)s)" in q.sql
+    assert '("ts", "id") > (%(__k0)s, %(__k1)s)' in q.sql
     assert q.params == {"__k0": "2026-01-01", "__k1": 42}
 
 
@@ -138,7 +138,7 @@ async def test_copy_stream_counts_rows_and_validates_table():
     db, pool = await _foundation()
     n = await db.datasource("db").copy_stream("readings", [(1, 2), (3, 4), (5, 6)])
     assert n == 3
-    assert pool.copied == [("readings", 3)]
+    assert pool.copied == [('"readings"', 3)]
 
     with pytest.raises(QueryError, match="unsafe SQL identifier"):
         await db.datasource("db").copy_stream("bad; DROP", [(1,)])

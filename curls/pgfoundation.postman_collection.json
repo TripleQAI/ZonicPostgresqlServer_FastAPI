@@ -70,7 +70,7 @@
             "description": "Query a view or table by name with structured filters\n\nAuthorized as `read` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"v_paid_orders\",\n  \"columns\": [\n    \"id\",\n    \"customer\",\n    \"amount\"\n  ],\n  \"filters\": [\n    {\n      \"column\": \"customer\",\n      \"op\": \"eq\",\n      \"value\": \"bob\"\n    }\n  ],\n  \"order_by\": [\n    {\n      \"column\": \"id\"\n    }\n  ],\n  \"limit\": 100\n}",
+              "raw": "{\n  \"name\": \"agentBuilder_agentworkflow\",\n  \"schema\": \"public\",\n  \"columns\": [\n    \"id\",\n    \"name\",\n    \"display_name\"\n  ],\n  \"filters\": [\n    {\n      \"column\": \"name\",\n      \"op\": \"ilike\",\n      \"value\": \"%agent%\"\n    }\n  ],\n  \"order_by\": [\n    {\n      \"column\": \"name\"\n    }\n  ],\n  \"limit\": 100\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -119,7 +119,7 @@
             "description": "Call a function by name\n\nAuthorized as `read` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"fn_orders_by_customer\",\n  \"args\": {\n    \"cust\": \"bob\"\n  }\n}",
+              "raw": "{\n  \"name\": \"now\",\n  \"scalar\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -168,7 +168,7 @@
             "description": "Call a stored procedure by name\n\nAuthorized as `write` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"sp_customer_stats\",\n  \"args\": [\n    \"bob\",\n    null,\n    null\n  ]\n}",
+              "raw": "{\n  \"name\": \"pgf_demo_touch\",\n  \"args\": [\n    1\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -217,7 +217,7 @@
             "description": "Time-bucketed fetch over a half-open [start, end) range\n\nAuthorized as `read` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"source\": \"demo_readings\",\n  \"time_column\": \"ts\",\n  \"start\": \"2026-08-13T00:00:00Z\",\n  \"end\": \"2026-08-14T00:00:00Z\",\n  \"every\": \"15 minutes\",\n  \"metrics\": [\n    {\n      \"column\": \"kwh\",\n      \"func\": \"sum\"\n    }\n  ],\n  \"group_by\": [\n    \"meter_id\"\n  ]\n}",
+              "raw": "{\n  \"source\": \"public.aiplatform_node_execution_log\",\n  \"time_column\": \"started_at\",\n  \"start\": \"2026-06-16T00:00:00Z\",\n  \"end\": \"2026-07-29T00:00:00Z\",\n  \"every\": \"1 day\",\n  \"metrics\": [\n    {\n      \"column\": \"duration_ms\",\n      \"func\": \"avg\",\n      \"alias\": \"avg_ms\"\n    },\n    {\n      \"column\": \"id\",\n      \"func\": \"count\",\n      \"alias\": \"runs\"\n    }\n  ],\n  \"group_by\": [\n    \"status\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -266,7 +266,7 @@
             "description": "Resumable keyset page; returns rows plus the next watermark\n\nAuthorized as `read` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sql\": \"SELECT ts, id, kwh FROM demo_readings WHERE meter_id = %(m)s\",\n  \"params\": {\n    \"m\": 1\n  },\n  \"cursor\": {\n    \"order_by\": [\n      \"ts\",\n      \"id\"\n    ],\n    \"after\": null\n  },\n  \"limit\": 1000\n}",
+              "raw": "{\n  \"sql\": \"SELECT started_at, id, node_name FROM public.aiplatform_node_execution_log\",\n  \"params\": {},\n  \"cursor\": {\n    \"order_by\": [\n      \"started_at\",\n      \"id\"\n    ],\n    \"after\": null\n  },\n  \"limit\": 1000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -315,7 +315,7 @@
             "description": "Batched parameterized writes\n\nAuthorized as `write` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sql\": \"INSERT INTO demo_orders (id, customer, amount, status) VALUES (%(id)s, %(c)s, %(a)s, 'paid')\",\n  \"params_seq\": [\n    {\n      \"id\": 101,\n      \"c\": \"carol\",\n      \"a\": \"12.00\"\n    },\n    {\n      \"id\": 102,\n      \"c\": \"dan\",\n      \"a\": \"8.25\"\n    }\n  ]\n}",
+              "raw": "{\n  \"sql\": \"INSERT INTO pgf_demo_orders (id, customer, amount, status) VALUES (%(id)s, %(c)s, %(a)s, 'paid')\",\n  \"params_seq\": [\n    {\n      \"id\": 101,\n      \"c\": \"carol\",\n      \"a\": \"12.00\"\n    },\n    {\n      \"id\": 102,\n      \"c\": \"dan\",\n      \"a\": \"8.25\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -364,7 +364,7 @@
             "description": "Streaming COPY ingest\n\nAuthorized as `write` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"table\": \"demo_orders\",\n  \"rows\": [\n    [\n      201,\n      \"erin\",\n      \"31.00\",\n      \"paid\"\n    ],\n    [\n      202,\n      \"frank\",\n      \"5.50\",\n      \"paid\"\n    ]\n  ]\n}",
+              "raw": "{\n  \"table\": \"pgf_demo_orders\",\n  \"rows\": [\n    [\n      201,\n      \"erin\",\n      \"31.00\",\n      \"paid\"\n    ],\n    [\n      202,\n      \"frank\",\n      \"5.50\",\n      \"paid\"\n    ]\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -417,7 +417,7 @@
             "description": "The default. Independent operations run concurrently against independent pools. Partial success is normal: HTTP stays 200 and each item carries its own `status`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mode\": \"parallel\",\n  \"max_concurrency\": 8,\n  \"items\": [\n    {\n      \"id\": \"orders\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 50\n      }\n    },\n    {\n      \"id\": \"totals\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"function\",\n      \"payload\": {\n        \"name\": \"fn_orders_by_customer\",\n        \"args\": {\n          \"cust\": \"bob\"\n        }\n      }\n    }\n  ]\n}",
+              "raw": "{\n  \"mode\": \"parallel\",\n  \"max_concurrency\": 8,\n  \"items\": [\n    {\n      \"id\": \"orders\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"agentBuilder_agentworkflow\",\n        \"schema\": \"public\",\n        \"limit\": 50\n      }\n    },\n    {\n      \"id\": \"totals\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"function\",\n      \"payload\": {\n        \"name\": \"now\",\n        \"scalar\": true\n      }\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -464,7 +464,7 @@
             "description": "One pinned connection, statements pipelined. Order is guaranteed and the HTTP/validation cost is paid once. Not atomic \u2014 use `transactional` for all-or-nothing. All items must target the same data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mode\": \"sequential\",\n  \"items\": [\n    {\n      \"id\": \"s0\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 10\n      }\n    },\n    {\n      \"id\": \"s1\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 10\n      }\n    },\n    {\n      \"id\": \"s2\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"v_paid_orders\",\n        \"limit\": 10\n      }\n    }\n  ]\n}",
+              "raw": "{\n  \"mode\": \"sequential\",\n  \"items\": [\n    {\n      \"id\": \"s0\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"django_migrations\",\n        \"schema\": \"public\",\n        \"limit\": 10\n      }\n    },\n    {\n      \"id\": \"s1\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"django_migrations\",\n        \"schema\": \"public\",\n        \"limit\": 10\n      }\n    },\n    {\n      \"id\": \"s2\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"view\",\n      \"payload\": {\n        \"name\": \"django_migrations\",\n        \"schema\": \"public\",\n        \"limit\": 10\n      }\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -511,7 +511,7 @@
             "description": "One UnitOfWork for every item, retried **whole** on serialization failure (40001) or deadlock (40P01).\n\n**The body may run more than once**, so items must be free of non-database side effects. All items must target the same data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mode\": \"transactional\",\n  \"items\": [\n    {\n      \"id\": \"debit\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"procedure\",\n      \"payload\": {\n        \"name\": \"sp_customer_stats\",\n        \"args\": [\n          \"bob\",\n          null,\n          null\n        ]\n      }\n    },\n    {\n      \"id\": \"credit\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"procedure\",\n      \"payload\": {\n        \"name\": \"sp_customer_stats\",\n        \"args\": [\n          \"alice\",\n          null,\n          null\n        ]\n      }\n    }\n  ]\n}",
+              "raw": "{\n  \"mode\": \"transactional\",\n  \"items\": [\n    {\n      \"id\": \"insert\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"execute\",\n      \"payload\": {\n        \"sql\": \"INSERT INTO pgf_demo_orders (id, customer, amount, status) VALUES (%(id)s, 'grace', '10.00', 'paid')\",\n        \"params\": {\n          \"id\": 301\n        }\n      }\n    },\n    {\n      \"id\": \"update\",\n      \"datasource\": \"{{datasource}}\",\n      \"op\": \"execute\",\n      \"payload\": {\n        \"sql\": \"UPDATE pgf_demo_orders SET status = 'shipped' WHERE id = %(id)s\",\n        \"params\": {\n          \"id\": 301\n        }\n      }\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -571,7 +571,7 @@
             "description": "Query a view or table by name with structured filters\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"v_paid_orders\",\n  \"columns\": [\n    \"id\",\n    \"customer\",\n    \"amount\"\n  ],\n  \"filters\": [\n    {\n      \"column\": \"customer\",\n      \"op\": \"eq\",\n      \"value\": \"bob\"\n    }\n  ],\n  \"order_by\": [\n    {\n      \"column\": \"id\"\n    }\n  ],\n  \"limit\": 100\n}",
+              "raw": "{\n  \"name\": \"agentBuilder_agentworkflow\",\n  \"schema\": \"public\",\n  \"columns\": [\n    \"id\",\n    \"name\",\n    \"display_name\"\n  ],\n  \"filters\": [\n    {\n      \"column\": \"name\",\n      \"op\": \"ilike\",\n      \"value\": \"%agent%\"\n    }\n  ],\n  \"order_by\": [\n    {\n      \"column\": \"name\"\n    }\n  ],\n  \"limit\": 100\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -625,7 +625,7 @@
             "description": "Call a function by name\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"fn_orders_by_customer\",\n  \"args\": {\n    \"cust\": \"bob\"\n  }\n}",
+              "raw": "{\n  \"name\": \"now\",\n  \"scalar\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -679,7 +679,7 @@
             "description": "Run a read query (raw SQL \u2014 advanced)\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sql\": \"SELECT id, customer, amount FROM demo_orders WHERE status = %(s)s LIMIT %(n)s\",\n  \"params\": {\n    \"s\": \"paid\",\n    \"n\": 10\n  }\n}",
+              "raw": "{\n  \"sql\": \"SELECT id, name, display_name FROM public.\\\"agentBuilder_agentworkflow\\\" ORDER BY name LIMIT %(n)s\",\n  \"params\": {\n    \"n\": 10\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -733,7 +733,7 @@
             "description": "Time-bucketed fetch over a half-open [start, end) range\n\nStreams NDJSON (one JSON object per line). Send `Accept: text/event-stream` for SSE instead.\n\nA mid-stream failure cannot change the HTTP status \u2014 the headers are already sent \u2014 so it arrives as a final `{\"error\": {...}, \"partial\": true}` line. **Check the last line.**",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"source\": \"demo_readings\",\n  \"time_column\": \"ts\",\n  \"start\": \"2026-08-13T00:00:00Z\",\n  \"end\": \"2026-08-14T00:00:00Z\",\n  \"every\": \"15 minutes\",\n  \"metrics\": [\n    {\n      \"column\": \"kwh\",\n      \"func\": \"sum\"\n    }\n  ],\n  \"group_by\": [\n    \"meter_id\"\n  ]\n}",
+              "raw": "{\n  \"source\": \"public.aiplatform_node_execution_log\",\n  \"time_column\": \"started_at\",\n  \"start\": \"2026-06-16T00:00:00Z\",\n  \"end\": \"2026-07-29T00:00:00Z\",\n  \"every\": \"1 day\",\n  \"metrics\": [\n    {\n      \"column\": \"duration_ms\",\n      \"func\": \"avg\",\n      \"alias\": \"avg_ms\"\n    },\n    {\n      \"column\": \"id\",\n      \"func\": \"count\",\n      \"alias\": \"runs\"\n    }\n  ],\n  \"group_by\": [\n    \"status\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1036,7 +1036,7 @@
             "description": "Run a read query (raw SQL \u2014 advanced)\n\nAuthorized as `read` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sql\": \"SELECT id, customer, amount FROM demo_orders WHERE status = %(s)s LIMIT %(n)s\",\n  \"params\": {\n    \"s\": \"paid\",\n    \"n\": 10\n  }\n}",
+              "raw": "{\n  \"sql\": \"SELECT id, name, display_name FROM public.\\\"agentBuilder_agentworkflow\\\" ORDER BY name LIMIT %(n)s\",\n  \"params\": {\n    \"n\": 10\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1085,7 +1085,7 @@
             "description": "Run a write command (raw SQL \u2014 advanced)\n\nAuthorized as `write` on the data source.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sql\": \"UPDATE demo_orders SET status = %(s)s WHERE id = %(id)s\",\n  \"params\": {\n    \"s\": \"shipped\",\n    \"id\": 1\n  }\n}",
+              "raw": "{\n  \"sql\": \"UPDATE pgf_demo_orders SET status = %(s)s WHERE id = %(id)s\",\n  \"params\": {\n    \"s\": \"shipped\",\n    \"id\": 101\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1140,7 +1140,7 @@
             "description": "The identifier is validated, never interpolated. This is the security boundary the whole name-based surface rests on.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"v_paid_orders; DROP TABLE demo_orders\"\n}",
+              "raw": "{\n  \"name\": \"agentBuilder_agentworkflow; DROP TABLE auth_user\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1189,7 +1189,7 @@
             "description": "`op` is a closed enum; an unknown operator never reaches SQL.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"v_paid_orders\",\n  \"filters\": [\n    {\n      \"column\": \"id\",\n      \"op\": \"; DROP\",\n      \"value\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"agentBuilder_agentworkflow\",\n  \"schema\": \"public\",\n  \"filters\": [\n    {\n      \"column\": \"id\",\n      \"op\": \"; DROP\",\n      \"value\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1238,7 +1238,7 @@
             "description": "Only configured, named sources are addressable. Clients never send a DSN.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"v_paid_orders\"\n}",
+              "raw": "{\n  \"name\": \"django_migrations\",\n  \"schema\": \"public\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

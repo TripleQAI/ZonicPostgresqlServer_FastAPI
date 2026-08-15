@@ -20,6 +20,26 @@ def safe_identifier(name: str) -> str:
     return name
 
 
+def quote_identifier(name: str) -> str:
+    """Validate, then render as a **quoted** identifier: ``"schema"."table"``.
+
+    PostgreSQL folds unquoted identifiers to lower case. Emitting a validated
+    name verbatim therefore makes every object whose name is not already
+    lower case unreachable through the governed API — a table created as
+    ``"agentBuilder_agentworkflow"`` (which is what Django and most ORMs do)
+    resolves to ``agentbuilder_agentworkflow`` and fails with *relation does not
+    exist*. Callers were then pushed onto the raw-SQL endpoint, which is exactly
+    the surface the design keeps off production.
+
+    Quoting is also strictly **safer** than not quoting: ``_IDENT`` already
+    excludes the quote character, so the emitted identifier cannot terminate its
+    own quoting, and a quoted identifier is never re-interpreted as a keyword.
+
+    Lower-case names are unaffected — ``"id"`` and ``id`` denote the same column.
+    """
+    return ".".join(f'"{part}"' for part in safe_identifier(name).split("."))
+
+
 def safe_agg_func(func: str) -> str:
     f = func.lower()
     if f not in _AGG_FUNCS:
@@ -27,4 +47,4 @@ def safe_agg_func(func: str) -> str:
     return f
 
 
-__all__ = ["safe_identifier", "safe_agg_func"]
+__all__ = ["safe_identifier", "quote_identifier", "safe_agg_func"]

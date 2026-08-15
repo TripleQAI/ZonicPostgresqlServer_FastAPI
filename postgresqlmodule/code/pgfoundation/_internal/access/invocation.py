@@ -23,7 +23,7 @@ from ...core.models import (
     Query,
     ViewQuery,
 )
-from .sql import safe_identifier
+from .sql import quote_identifier, safe_identifier
 
 # FilterOp -> SQL binary operator (only whitelisted ops reach here).
 _BINARY_OP = {
@@ -39,8 +39,13 @@ _BINARY_OP = {
 
 
 def _qualified(name: str, schema: str | None) -> str:
-    """Validate + qualify an object name (``schema.name`` or ``name``)."""
-    return safe_identifier(f"{schema}.{name}" if schema else name)
+    """Validate + qualify an object name, emitted **quoted** (``"schema"."name"``).
+
+    Quoting is what makes a mixed-case relation reachable at all: PostgreSQL
+    folds an unquoted identifier to lower case, so an ORM-created table such as
+    ``"agentBuilder_agentworkflow"`` could not be named through this API before.
+    """
+    return quote_identifier(f"{schema}.{name}" if schema else name)
 
 
 def _compile_filters(filters) -> tuple[str, dict]:
@@ -51,7 +56,7 @@ def _compile_filters(filters) -> tuple[str, dict]:
     for i, f in enumerate(filters):
         if not isinstance(f, Filter):
             raise QueryError("filters must be Filter instances")
-        col = safe_identifier(f.column)
+        col = quote_identifier(f.column)
         op = f.op
         if op in (FilterOp.IS_NULL, FilterOp.IS_NOT_NULL):
             clauses.append(f"{col} IS {'NOT ' if op is FilterOp.IS_NOT_NULL else ''}NULL")
@@ -83,14 +88,14 @@ def _compile_filters(filters) -> tuple[str, dict]:
 def compile_view(q: ViewQuery) -> Query:
     """ViewQuery -> parameterized ``SELECT`` over a whitelisted relation."""
     src = _qualified(q.name, q.schema)
-    cols = "*" if not q.columns else ", ".join(safe_identifier(c) for c in q.columns)
+    cols = "*" if not q.columns else ", ".join(quote_identifier(c) for c in q.columns)
 
     where, params = _compile_filters(q.filters)
 
     order = ""
     if q.order_by:
         order = " ORDER BY " + ", ".join(
-            f"{safe_identifier(o.column)} {'DESC' if o.descending else 'ASC'}"
+            f"{quote_identifier(o.column)} {'DESC' if o.descending else 'ASC'}"
             for o in q.order_by
         )
 
@@ -113,8 +118,12 @@ def compile_function(q: FunctionQuery) -> Query:
     elif isinstance(q.args, Mapping):
         parts = []
         for key, value in q.args.items():
-            arg = safe_identifier(key)  # named-arg identifier
-            parts.append(f"{arg} => %({arg})s")
+            # Two different things share this name and only ONE is quoted: the
+            # SQL argument identifier (quoted, so a mixed-case parameter name
+            # matches) and the psycopg placeholder key (must stay bare — quotes
+            # in the key would not match `%(key)s`).
+            arg = safe_identifier(key)
+            parts.append(f"{quote_identifier(key)} => %({arg})s")
             params[arg] = value
         arglist = ", ".join(parts)
     else:

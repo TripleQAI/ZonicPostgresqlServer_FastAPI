@@ -14,8 +14,7 @@
   // same rule production follows — the file names the source, the environment
   // supplies the secret (doc 12 §12.2).
   //
-  // No database to hand? Use "demo (no database)" — it serves the full API,
-  // Swagger UI and the curls/ collection against an in-memory fake driver.
+  // To validate a DSN without starting a server:  python check_dsn.py
   "version": "0.2.0",
   "configurations": [
     {
@@ -34,19 +33,6 @@
         "PGF_SERVER__HOST": "127.0.0.1",
         "PGF_SERVER__PORT": "8600",
         "PGF_OBSERVABILITY__METRICS_ENABLED": "true"
-      }
-    },
-    {
-      "name": "demo (no database) · localhost:8600",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/postgresqlmodule/code/run_demo.py",
-      "python": "${workspaceFolder}/postgresqlmodule/venv314/Scripts/python.exe",
-      "cwd": "${workspaceFolder}/postgresqlmodule/code",
-      "console": "integratedTerminal",
-      "justMyCode": false,
-      "env": {
-        "PGF_SERVER__PORT": "8600"
       }
     },
     {

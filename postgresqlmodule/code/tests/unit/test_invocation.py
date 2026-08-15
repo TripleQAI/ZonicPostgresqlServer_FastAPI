@@ -32,7 +32,7 @@ from pgfoundation.core.errors import QueryError
 
 def test_view_all_columns():
     q = compile_view(ViewQuery(name="v_paid_orders"))
-    assert q.sql == "SELECT * FROM v_paid_orders"
+    assert q.sql == 'SELECT * FROM "v_paid_orders"'
     assert q.params == {}
 
 
@@ -44,9 +44,9 @@ def test_view_columns_filters_order_limit():
         order_by=[OrderBy("id", descending=True)], limit=50, offset=10,
     ))
     assert q.sql == (
-        "SELECT id, amount FROM public.orders "
-        "WHERE customer = %(f0)s AND amount >= %(f1)s "
-        "ORDER BY id DESC LIMIT 50 OFFSET 10"
+        'SELECT "id", "amount" FROM "public"."orders" '
+        'WHERE "customer" = %(f0)s AND "amount" >= %(f1)s '
+        'ORDER BY "id" DESC LIMIT 50 OFFSET 10'
     )
     assert q.params == {"f0": "bob", "f1": 10}
 
@@ -57,9 +57,9 @@ def test_view_in_and_between_and_null_filters():
         Filter("ts", FilterOp.BETWEEN, ["2026-01", "2026-06"]),
         Filter("deleted_at", FilterOp.IS_NULL),
     ]))
-    assert "status IN (%(f0_0)s, %(f0_1)s)" in q.sql
-    assert "ts BETWEEN %(f1_lo)s AND %(f1_hi)s" in q.sql
-    assert "deleted_at IS NULL" in q.sql
+    assert '"status" IN (%(f0_0)s, %(f0_1)s)' in q.sql
+    assert '"ts" BETWEEN %(f1_lo)s AND %(f1_hi)s' in q.sql
+    assert '"deleted_at" IS NULL' in q.sql
     assert q.params == {"f0_0": "paid", "f0_1": "shipped", "f1_lo": "2026-01", "f1_hi": "2026-06"}
 
 
@@ -79,18 +79,18 @@ def test_view_empty_in_list_rejected():
 
 def test_function_set_returning_named_args():
     q = compile_function(FunctionQuery(name="fn_orders_by_customer", args={"cust": "bob"}))
-    assert q.sql == "SELECT * FROM fn_orders_by_customer(cust => %(cust)s)"
+    assert q.sql == 'SELECT * FROM "fn_orders_by_customer"("cust" => %(cust)s)'
     assert q.params == {"cust": "bob"}
 
 
 def test_function_positional_args_and_scalar():
     q = compile_function(FunctionQuery(name="fn_total", args=[1, 2], scalar=True))
-    assert q.sql == "SELECT fn_total(%(a0)s, %(a1)s) AS result"
+    assert q.sql == 'SELECT "fn_total"(%(a0)s, %(a1)s) AS result'
     assert q.params == {"a0": 1, "a1": 2}
 
 
 def test_function_no_args():
-    assert compile_function(FunctionQuery(name="now_ish")).sql == "SELECT * FROM now_ish()"
+    assert compile_function(FunctionQuery(name="now_ish")).sql == 'SELECT * FROM "now_ish"()'
 
 
 def test_function_rejects_injection():
@@ -104,12 +104,12 @@ def test_function_rejects_injection():
 
 def test_procedure_call_positional():
     q = compile_procedure(ProcedureCall(name="sp_stats", args=["bob", None, None]))
-    assert q.sql == "CALL sp_stats(%(a0)s, %(a1)s, %(a2)s)"
+    assert q.sql == 'CALL "sp_stats"(%(a0)s, %(a1)s, %(a2)s)'
     assert q.params == {"a0": "bob", "a1": None, "a2": None}
 
 
 def test_procedure_no_args():
-    assert compile_procedure(ProcedureCall(name="sp_run")).sql == "CALL sp_run()"
+    assert compile_procedure(ProcedureCall(name="sp_run")).sql == 'CALL "sp_run"()'
 
 
 # --- deterministic output (prepared-statement reuse / high throughput) ---
@@ -139,3 +139,52 @@ async def test_view_function_procedure_execute_via_facade():
     # the SQL that reached the driver was compiled from names, not client SQL
     assert any("v_paid_orders" in s.sql for s in pool.executed)
     assert all(";" not in s.sql for s in pool.executed)  # no injected multi-statements
+
+
+# --- mixed-case identifiers (regression) ---------------------------------
+#
+# PostgreSQL folds an UNQUOTED identifier to lower case. Emitting a validated
+# name verbatim therefore made every ORM-created relation unreachable through
+# the governed API: `agentBuilder_agentworkflow` compiled to
+# `SELECT * FROM public.agentBuilder_agentworkflow`, which the server read as
+# `public.agentbuilder_agentworkflow` and rejected with *relation does not
+# exist*. The only workaround was the raw-SQL endpoint — precisely the surface
+# this API exists to replace.
+
+def test_mixed_case_relation_is_quoted_so_it_actually_resolves():
+    q = compile_view(ViewQuery(name="agentBuilder_agentworkflow", schema="public", limit=10))
+    assert q.sql == 'SELECT * FROM "public"."agentBuilder_agentworkflow" LIMIT 10'
+    # The bare form is what the server would have folded to lower case.
+    assert "public.agentBuilder_agentworkflow" not in q.sql
+
+
+def test_mixed_case_columns_filters_and_order_are_quoted():
+    q = compile_view(ViewQuery(
+        name="agentBuilder_agentworkflow", schema="public",
+        columns=["id", "displayName"],
+        filters=[Filter("isActive", FilterOp.EQ, True)],
+        order_by=[OrderBy("createdAt", descending=True)],
+    ))
+    assert q.sql == (
+        'SELECT "id", "displayName" FROM "public"."agentBuilder_agentworkflow" '
+        'WHERE "isActive" = %(f0)s ORDER BY "createdAt" DESC'
+    )
+
+
+def test_quoting_does_not_change_meaning_for_lowercase_names():
+    """`"orders"` and `orders` denote the same relation — no behaviour change."""
+    assert compile_view(ViewQuery(name="orders")).sql == 'SELECT * FROM "orders"'
+
+
+def test_named_function_arg_quotes_the_identifier_but_not_the_param_key():
+    """Only one of the two uses is an identifier; quoting the other breaks binding."""
+    q = compile_function(FunctionQuery(name="myFn", args={"custId": 7}))
+    assert q.sql == 'SELECT * FROM "myFn"("custId" => %(custId)s)'
+    assert q.params == {"custId": 7}  # key is BARE — `%(custId)s` must match it
+
+
+def test_quoting_cannot_be_used_to_escape_the_identifier():
+    """`_IDENT` excludes `"`, so an emitted identifier can never close its quote."""
+    for evil in ['a" ; DROP TABLE x --', 'a"."b', 'x" OR "1', "a'b"]:
+        with pytest.raises(QueryError, match="unsafe SQL identifier"):
+            compile_view(ViewQuery(name=evil))

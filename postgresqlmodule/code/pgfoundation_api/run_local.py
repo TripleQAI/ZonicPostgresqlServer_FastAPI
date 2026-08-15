@@ -14,6 +14,7 @@ primary development environment.
 from __future__ import annotations
 
 import asyncio
+import os
 import selectors
 import sys
 from pathlib import Path
@@ -36,6 +37,7 @@ def _explain(exc: Exception) -> None:
     """
     message = str(exc)
     print(f"\n  Startup failed: {message}\n", file=sys.stderr)
+    # Everything below goes to stderr; flush before the hard exit in `_die`.
 
     if "unresolved config reference" in message and "env:" in message:
         var = message.split("env:")[-1].rstrip("} ")
@@ -51,10 +53,28 @@ def _explain(exc: Exception) -> None:
             f"  Copy the template if you have not already:\n\n"
             f"      copy .env.example .env\n\n"
             f"  The VS Code launch configurations load that file automatically.\n"
-            f"  No database to hand? Run the demo instead - it needs none:\n\n"
-            f"      python run_demo.py\n",
+            f"  To check a DSN without starting a server:\n\n"
+            f"      python check_dsn.py\n",
             file=sys.stderr,
         )
+
+
+def _die(code: int) -> None:
+    """Exit on an expected configuration error, without a debugger overlay.
+
+    `raise SystemExit` / `sys.exit` raise an exception, and a debugger dutifully
+    breaks on it: VS Code shows "Exception has occurred: SystemExit" with a full
+    traceback, burying the message `_explain` just printed. A traceback is
+    exactly what that message exists to replace.
+
+    `os._exit` skips the exception machinery entirely. It also skips interpreter
+    cleanup, which is safe *here specifically*: this runs before the server is
+    built and before any pool is opened, so there is nothing to close. Do not
+    reuse it once resources are live.
+    """
+    sys.stderr.flush()
+    sys.stdout.flush()
+    os._exit(code)
 
 
 def main() -> None:
@@ -74,7 +94,7 @@ def main() -> None:
             print(f"  config OK — data sources: {', '.join(names)}")
     except ConfigError as exc:
         _explain(exc)
-        raise SystemExit(2) from None
+        _die(2)
     config = uvicorn.Config(
         create_app(settings),
         host=settings.server.host,

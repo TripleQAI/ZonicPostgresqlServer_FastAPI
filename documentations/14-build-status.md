@@ -61,7 +61,7 @@ reading the code — `ConnectionPort` missing `copy_stream`/`listen`, and
 
 | Gap | Why it is open |
 |-----|----------------|
-| **P3.11 live integration tests** | Needs `PGF_TEST_DSN`. **Confirm first whether port `32064` is a direct or transaction-pooled endpoint** ([12 §12.6](./12-deployment-targets.md)) — under a transaction pooler, server-side cursors, `LISTEN/NOTIFY` and session `SET` all break, and the tests would fail for environmental reasons rather than code ones. |
+| **P3.11 live integration tests** | Needs only a password now. The pooling question is **resolved**: the console shows no connection pooler, so `32064` is the direct session endpoint and cursors / `LISTEN/NOTIFY` / session `SET` all work ([12 §12.6](./12-deployment-targets.md)). TLS `verify-full` is verified against the system trust store. |
 | **P4.7 partial** | The pinned-connection isolation invariant is asserted in `UnitOfWork`; the live isolation-level test belongs with P3.11. |
 | **P4.10/P4.11** | Prod-profile assertions exist in `config/profiles/prod.yaml`; the least-privilege database role and `sslmode=verify-full` are deployment actions against the real instance. |
 | **Trace and log emission** | The metric points are implemented and gated. The remaining `OBSERVE` markers are `TRACE` and `LOG` points, which need a real `TracerPort` / `LoggerPort` adapter to bind to — per ADR-014 that adapter belongs to the external observability project. |

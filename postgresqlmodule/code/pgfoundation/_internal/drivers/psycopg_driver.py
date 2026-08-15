@@ -42,6 +42,26 @@ async def _as_aiter(rows):
 # collide. A process-wide monotonic counter cannot repeat.
 _CURSOR_SEQ = itertools.count()
 
+
+def session_timeout_sql(milliseconds: int) -> str:
+    """Build ``SET statement_timeout = <ms>``.
+
+    ``SET`` is a **utility statement**: PostgreSQL parses it directly and does
+    not accept bound parameters, so ``SET statement_timeout = %s`` fails with
+    `syntax error at or near "$1"` the moment psycopg sends it over the extended
+    protocol. The value has to be inlined.
+
+    Inlining is safe here and only here: ``int()`` is a total function to a
+    number, and the input is an already-validated config field. This is NOT a
+    licence to interpolate elsewhere — every value on the query path stays a
+    bound parameter (doc 07 §7.2).
+
+    Kept as a function so the SQL can be asserted without a database; the bug it
+    replaces was invisible to every test because no configuration set a
+    statement timeout.
+    """
+    return f"SET statement_timeout = {int(milliseconds)}"
+
 _ISO = {
     IsolationLevel.READ_COMMITTED: psycopg.IsolationLevel.READ_COMMITTED,
     IsolationLevel.REPEATABLE_READ: psycopg.IsolationLevel.REPEATABLE_READ,
@@ -230,9 +250,7 @@ class PsycopgPool:
         if self._policy.read_only:
             await conn.execute("SET default_transaction_read_only = on")
         if self._policy.statement_timeout_ms is not None:
-            await conn.execute(
-                "SET statement_timeout = %s", (self._policy.statement_timeout_ms,)
-            )
+            await conn.execute(session_timeout_sql(self._policy.statement_timeout_ms))
 
     async def open(self) -> None:
         # Open the pool but do NOT hard-fail startup if the DB is momentarily

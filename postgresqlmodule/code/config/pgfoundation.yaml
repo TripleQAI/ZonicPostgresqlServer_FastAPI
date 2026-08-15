@@ -1,20 +1,60 @@
 # pgfoundation — LOCAL config.
 #
-# Structure and tunables only. NO SECRETS: the DSN is a reference the loader
-# resolves from the environment (documentations/12-deployment-targets.md §12.2).
-#
-#   export PGF_MAIN_DSN="postgresql://user:pass@localhost:5432/mydb"
-#   export PGF_CONFIG="$PWD/config/pgfoundation.yaml"
+# Structure and tunables only. NO SECRETS: every dsn is a ${env:...} reference
+# the loader resolves at startup (documentations/12-deployment-targets.md §12.2).
+# Put the values in a gitignored .env; `python check_dsn.py` validates them.
 
 datasources:
+  # --- main: Tiger Cloud service `tripleq-development` (AWS us-east-1) --------
+  # The deployed target. Direct session endpoint (no pooler), so server-side
+  # cursors, LISTEN/NOTIFY and session SET all work (§12.6).
+  #
+  # Tuned for a database across the public internet rather than a LAN:
+  #   * min_size 2  — a connection costs a TLS handshake to a remote host, so
+  #                   keep some warm rather than paying it on the request path.
+  #   * acquire_timeout 10s and statement_timeout 30s — LAN-tuned budgets produce
+  #                   spurious failures against a cloud endpoint (§12.6).
+  #   * itersize 5000 — fewer, larger fetches across a WAN.
   - name: main
     dsn: ${env:PGF_MAIN_DSN}
     role: standalone
-    pool: { min_size: 1, max_size: 10, acquire_timeout_seconds: 5 }
+    statement_timeout_ms: 30000
+    pool: { min_size: 2, max_size: 10, acquire_timeout_seconds: 10, max_lifetime_seconds: 1800 }
+    stream: { itersize: 5000 }
+
+  # --- Optional: the local Docker instance (migration source) ----------------
+  # Uncomment to read from both at once — separate pools, separate circuit
+  # breakers, so saturating one cannot starve the other. Managing N named
+  # sources from one process is what this layer is for (Requirement 1).
+  #
+  # NOTE if you enable it: `energydata` has NO objects in `public`. They live in
+  # the `client`, `dbo`, `fsh` and `utility` schemas, so name-based calls must
+  # pass "schema", e.g. {"name": "facility", "schema": "client"}.
+  # - name: local
+  #   dsn: ${env:PGF_LOCAL_DSN}
+  #   role: standalone
+  #   pool: { min_size: 1, max_size: 5, acquire_timeout_seconds: 5 }
 
 resilience:
   retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
   circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
+
+concurrency:
+  # Must stay within Σ(pool.max_size) = 10, or the limiter would admit work the
+  # pools cannot hold and a fast 503 would degrade into a slow pool timeout
+  # (doc 05 §5.5). Raise both together if you enable the second data source.
+  #
+  # Also check against the instance's connection limit: this is
+  # `workers × Σ pool.max_size`, so 4 uvicorn workers means 40 connections, not
+  # 10 (§12.4).
+  max_inflight_total: 10
+  max_inflight_per_datasource: 10
+  admission_timeout_ms: 2000
+
+batch:
+  # Must be <= concurrency.max_inflight_total (config refuses to start otherwise).
+  # 8 also stops one batch monopolising every slot in the process.
+  max_concurrency: 8
 
 auth:
   enabled: false          # caller auth — see ADR-008; MUST be true in the prod profile

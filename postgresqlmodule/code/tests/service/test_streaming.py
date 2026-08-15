@@ -271,7 +271,7 @@ async def test_copy_ingests_rows(settings):
 
     assert body["row_count"] == 3
     pool = next(iter(driver.pools.values()))
-    assert pool.copied == [("readings", 3)]
+    assert pool.copied == [('"readings"', 3)]
     await foundation.aclose()
 
 

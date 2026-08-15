@@ -7,14 +7,62 @@ credential appears in this repository** ([05](./05-configuration.md)).
 
 | Env | Provider | Host | Port | Database | Login role | Notes |
 |-----|----------|------|------|----------|-----------|-------|
-| *(to be assigned)* | **Timescale Cloud** (AWS) | `aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com` | `32064` | `tsdb` | `tsdbadmin` (admin — see §12.5) | TLS required; reached over the public internet |
-| local dev | Docker PostgreSQL | `localhost` | `5432` | developer's choice | developer's choice | |
+| **`main`** (`tripleq-development`) | **Timescale Cloud** (AWS `us-east-1`) | `aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com` | `32064` | `tsdb` | `tsdbadmin` (admin — see §12.5) | **Direct session endpoint, no pooler** (§12.6). 2 vCPU. TLS verified (§12.3). Reached over the public internet |
+| local *(optional)* | Docker `timescale/timescaledb:latest-pg16` | `localhost` | **`5434`** (host) -> 5432 (container) | `energydata` (+ 6 others) | `fshadmin` | PostgreSQL 16.14, timescaledb 2.29.1, `max_connections=100`. The migration **source**; not enabled by default. Objects live in `client` / `dbo` / `fsh` / `utility`, **not `public`** — see below |
 
 The service URL as supplied:
 
 ```
 postgres://tsdbadmin@aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com:32064/tsdb?sslmode=require
 ```
+
+> **The console's Service URL contains no password** — there is nothing between
+> `tsdbadmin` and `@`. Pasted verbatim, libpq reports
+> `fe_sendauth: no password supplied` rather than an authentication error, which
+> reads like a connectivity problem and is not. The password is shown once at
+> service creation; otherwise reset it via **Forgot your password?** in the
+> Connect panel. `python check_dsn.py` at the repo root catches this and the
+> related percent-encoding traps before a server is started.
+
+### `main` is the cloud service
+
+`config/pgfoundation.yaml` defines **`main` = Tiger Cloud** — the deployed
+target, and the only data source enabled by default. Its pool is tuned for a
+database across the public internet rather than a LAN: warm connections
+(`min_size: 2`, because each one costs a TLS handshake to a remote host), a 10 s
+acquire timeout, a 30 s statement timeout, and `itersize: 5000` for fewer,
+larger fetches.
+
+> **Note for anyone reading the Django project alongside this one:** there,
+> `main` meant the local Docker instance. Here it means the cloud service. A
+> call to `/v1/datasources/main/view` therefore reads a *different* database in
+> the two projects — worth knowing before comparing behaviour between them.
+
+The local Docker instance remains available as an optional **second** data
+source (`local`, commented out in the config). Enabling it gives each source its
+own pool and circuit breaker, so saturating one cannot starve the other —
+managing N named sources from one process being what this layer is for
+(Requirement 1). That is the shape a migration wants: read from `local`, write
+to `main`, in one process.
+
+### ⚠ If you enable `local`: `energydata` has no `public` schema
+
+Its objects live in `client`, `dbo`, `fsh` and `utility`, and `search_path` is
+`"$user", public`. Name-based calls against it **must** qualify the schema:
+
+```bash
+# works
+-d '{"name":"facility","schema":"client","limit":2}'
+
+# fails: relation "facility" does not exist
+-d '{"name":"facility","limit":1}'
+```
+
+Known objects: `client.facility`, `dbo.userfacilitymapping`,
+`fsh.degreeday_hourly_temps`, `fsh.degreeday_monthly`, `fsh.weatherdata`,
+`utility.bill`, `utility.bill_reference_summary`. Note there are **no
+hypertables** in `energydata` despite TimescaleDB being installed — consistent
+with the cloud service, and with time-series staying deferred (§12.7).
 
 ## 12.2 How the DSN reaches the service
 
@@ -49,7 +97,13 @@ OpenAPI document — asserted by
 
 ## 12.3 TLS: prefer `verify-full` over `require`
 
-The supplied URL uses `sslmode=require`. That **encrypts the connection but does
+**Verified against this endpoint (2026-08-14):** the certificate presents
+`CN=aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com`, is issued by Google Trust
+Services, expires 2026-11-10, and **validates against the system trust store** —
+so `verify-full` works with no CA bundle and no `sslrootcert=`. There is no cost
+to using it.
+
+The console's Service URL uses `sslmode=require`. That **encrypts the connection but does
 not authenticate the server** — it accepts any certificate, so it does not defend
 against an active man-in-the-middle. Over the public internet that gap is worth
 closing:
@@ -60,10 +114,13 @@ closing:
 | `verify-ca` | yes | chain only, not hostname | Partial |
 | `verify-full` | yes | chain **and** hostname | **Recommended** |
 
-`verify-full` needs Timescale Cloud's CA bundle available to the process
-(`sslrootcert=`, or the system trust store if the chain is publicly rooted). The
-prod profile should assert `verify-full`; dev may relax it. Treat this as a
-config change, not a code change — nothing in the foundation parses the DSN.
+For **this** endpoint no `sslrootcert=` is needed — the chain is publicly rooted
+and already trusted (measured above), so `verify-full` costs nothing but a
+different word in the DSN. Every profile should assert it, including dev: there
+is no trade-off left to make.
+
+Treat this as a config change, not a code change — nothing in the foundation
+parses the DSN.
 
 ## 12.4 Connection budget — the arithmetic that must be checked
 
@@ -131,11 +188,17 @@ Timeouts should also be set with the network in mind: `statement_timeout_ms` and
 `acquire_timeout_seconds` tuned for LAN latency will produce spurious failures
 against a cloud endpoint.
 
-### ⚠ Verify whether port 32064 is a direct or pooled endpoint
+### ✅ Resolved: port 32064 is the DIRECT endpoint
+
+**Confirmed from the service console (2026-08-14): no connection pooler is
+configured** — the Overview offers "+ Connection pooler" as a feature to add, so
+`32064` is the primary session endpoint. Everything below therefore *works*; it is
+retained because the answer changes the day somebody enables a pooler, and the
+consequences are not obvious from the config diff that would introduce it.
 
 Managed providers commonly offer both a direct (session-mode) endpoint and a
-**transaction-mode connection pooler**. This matters more than usual here, because
-a transaction-mode pooler breaks four things this design relies on:
+**transaction-mode connection pooler**. A transaction-mode pooler breaks four
+things this design relies on:
 
 | Feature | Under a transaction-mode pooler |
 |---------|--------------------------------|
@@ -145,10 +208,10 @@ a transaction-mode pooler breaks four things this design relies on:
 | Prepared statements | Degraded or unavailable, depending on pooler protocol support |
 
 The foundation **is itself a connection concentrator**, so stacking it behind a
-transaction pooler is largely redundant and actively costs features. Recommendation:
-**connect to the direct/session endpoint** and let the foundation own pooling. This
-needs confirming with the provider's console before P1 — it is a one-line config
-consequence but a multi-feature functional one.
+transaction pooler is largely redundant and actively costs features. The current
+setup is already correct: **the direct endpoint, with the foundation owning
+pooling.** If a pooler is ever added, it must be added as a *second* endpoint for
+callers that want it — not swapped in underneath this service.
 
 ## 12.7 This target is TimescaleDB
 

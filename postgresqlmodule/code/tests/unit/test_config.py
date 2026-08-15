@@ -60,3 +60,34 @@ def test_env_interpolation(monkeypatch):
 def test_unresolved_reference_fails_fast():
     with pytest.raises(ConfigError, match="unresolved config reference"):
         load_settings({"datasources": [{"name": "o", "dsn": "${env:NOPE_MISSING}"}]})
+
+
+def test_session_timeout_sql_inlines_the_value():
+    """`SET` is a utility statement: PostgreSQL rejects bound parameters for it.
+
+    `SET statement_timeout = %s` fails with `syntax error at or near "$1"` as
+    soon as a connection is configured with a timeout — which no test caught,
+    because no configuration set one until the cloud data source did.
+    """
+    from pgfoundation._internal.drivers.psycopg_driver import session_timeout_sql
+
+    sql = session_timeout_sql(30000)
+    assert sql == "SET statement_timeout = 30000"
+    assert "%s" not in sql and "$1" not in sql
+
+
+def test_session_timeout_sql_refuses_anything_but_a_number():
+    """`int()` is the only reason inlining is acceptable here.
+
+    Anything that is not a number raises rather than reaching the SQL string, so
+    this one inlined value cannot become an injection point.
+    """
+    import pytest
+
+    from pgfoundation._internal.drivers.psycopg_driver import session_timeout_sql
+
+    with pytest.raises(ValueError):
+        session_timeout_sql("5000; DROP TABLE demo_orders")
+
+    # A numeric string is still coerced, not concatenated.
+    assert session_timeout_sql("250") == "SET statement_timeout = 250"

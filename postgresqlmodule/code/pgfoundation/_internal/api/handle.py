@@ -25,7 +25,7 @@ from ...core.models import (
 from ...core.ports import ClockPort, PoolPort
 from ..access.interval import compile_interval
 from ..access.invocation import compile_function, compile_procedure, compile_view
-from ..access.sql import safe_identifier
+from ..access.sql import quote_identifier
 from ..access.transactions import TxnBody, run_transaction
 from ..access.uow import UnitOfWork
 from ..access.watermark import fetch_since as _fetch_since
@@ -231,7 +231,7 @@ class DataSourceHandle:
 
     # --- Streaming ingest / change stream (doc 16 §16.6) ---
     async def copy_stream(self, table: str, rows) -> int:
-        tbl = safe_identifier(table)
+        tbl = quote_identifier(table)
         conn = await self._pool.acquire()
         try:
             return await conn.copy_stream(tbl, rows)
@@ -239,7 +239,7 @@ class DataSourceHandle:
             await self._pool.release(conn)
 
     async def listen(self, channel: str) -> AsyncIterator[NotifyEvent]:
-        ch = safe_identifier(channel)
+        ch = quote_identifier(channel)
         conn = await self._pool.acquire()
         try:
             async for event in conn.listen(ch):

@@ -1,4 +1,4 @@
-"""Check PGF_MAIN_DSN in .env without printing the secret.
+"""Check PGF_TSDB_DSN in .env without printing the secret.
 
     python check_dsn.py
 
@@ -25,12 +25,12 @@ def main() -> int:
         (
             ln
             for ln in env.read_text(encoding="utf-8").splitlines()
-            if ln.strip().startswith("PGF_MAIN_DSN=") and not ln.strip().startswith("#")
+            if ln.strip().startswith("PGF_TSDB_DSN=") and not ln.strip().startswith("#")
         ),
         None,
     )
     if line is None:
-        print("  No active PGF_MAIN_DSN line in .env (every one is commented out)")
+        print("  No active PGF_TSDB_DSN line in .env (every one is commented out)")
         return 1
 
     value = line.split("=", 1)[1].strip()

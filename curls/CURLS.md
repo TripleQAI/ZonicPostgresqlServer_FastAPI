@@ -8,7 +8,8 @@ For the whole API at once, import `pgfoundation.postman_collection.json` instead
 
 ```bash
 BASE=http://127.0.0.1:8600
-DS=main            # a configured data-source name
+DS=tsdb            # a configured data-source name (aliases are named
+                   # after the database they open)
 ```
 
 ## Authentication

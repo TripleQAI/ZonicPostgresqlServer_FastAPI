@@ -31,7 +31,7 @@ def _explain(exc: Exception) -> None:
 
     The config loader is right to fail hard on an unresolved reference — a DSN
     that silently defaults to nothing is how you end up connected to the wrong
-    database. But "unresolved config reference: ${env:PGF_MAIN_DSN}" at the
+    database. But "unresolved config reference: ${env:PGF_TSDB_DSN}" at the
     bottom of a lifespan traceback does not tell a developer *where* to set it,
     and that is the launcher's job to say.
     """

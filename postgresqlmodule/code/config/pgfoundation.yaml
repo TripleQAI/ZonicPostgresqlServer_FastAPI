@@ -5,7 +5,11 @@
 # Put the values in a gitignored .env; `python check_dsn.py` validates them.
 
 datasources:
-  # --- main: Tiger Cloud service `tripleq-development` (AWS us-east-1) --------
+  # --- tsdb: Tiger Cloud service `tripleq-development` (AWS us-east-1) -------
+  # The alias IS the database name. A generic alias like `main` says nothing
+  # about what it points at, and silently changes meaning when it is repointed —
+  # a saved `/v1/datasources/main/view` request kept working while the database
+  # underneath it changed, which is exactly the failure worth avoiding.
   # The deployed target. Direct session endpoint (no pooler), so server-side
   # cursors, LISTEN/NOTIFY and session SET all work (§12.6).
   #
@@ -15,8 +19,8 @@ datasources:
   #   * acquire_timeout 10s and statement_timeout 30s — LAN-tuned budgets produce
   #                   spurious failures against a cloud endpoint (§12.6).
   #   * itersize 5000 — fewer, larger fetches across a WAN.
-  - name: main
-    dsn: ${env:PGF_MAIN_DSN}
+  - name: tsdb
+    dsn: ${env:PGF_TSDB_DSN}
     role: standalone
     statement_timeout_ms: 30000
     pool: { min_size: 2, max_size: 10, acquire_timeout_seconds: 10, max_lifetime_seconds: 1800 }
@@ -30,8 +34,8 @@ datasources:
   # NOTE if you enable it: `energydata` has NO objects in `public`. They live in
   # the `client`, `dbo`, `fsh` and `utility` schemas, so name-based calls must
   # pass "schema", e.g. {"name": "facility", "schema": "client"}.
-  # - name: local
-  #   dsn: ${env:PGF_LOCAL_DSN}
+  # - name: energydata
+  #   dsn: ${env:PGF_ENERGYDATA_DSN}
   #   role: standalone
   #   pool: { min_size: 1, max_size: 5, acquire_timeout_seconds: 5 }
 

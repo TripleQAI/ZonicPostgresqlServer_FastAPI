@@ -32,8 +32,8 @@ OUT_DIR = Path(__file__).parent
 # --------------------------------------------------------------------------- #
 # Curated example bodies, keyed by the operation id in the registry.
 #
-# Every READ example below runs as-is against the deployed `main` data source
-# (Tiger Cloud `tsdb`) — no setup, no imagined schema. They were previously
+# Every READ example below runs as-is against the deployed `tsdb` data source
+# (Tiger Cloud) — no setup, no imagined schema. They were previously
 # written against demo objects that do not exist there, so an imported
 # collection returned `relation ... does not exist` on almost every request.
 #
@@ -390,7 +390,7 @@ def main() -> int:
         },
         "variable": [
             {"key": "baseUrl", "value": "http://127.0.0.1:8600"},
-            {"key": "datasource", "value": "main"},
+            {"key": "datasource", "value": "tsdb"},
             {"key": "channel", "value": "orders_changed"},
             {"key": "callerSubject", "value": "orders-api"},
             {"key": "apiKey", "value": ""},
@@ -462,7 +462,8 @@ def write_curls(collection: dict) -> None:
         "",
         "```bash",
         "BASE=http://127.0.0.1:8600",
-        "DS=main            # a configured data-source name",
+        "DS=tsdb            # a configured data-source name (aliases are named",
+        "                   # after the database they open)",
         "```",
         "",
         "## Authentication",
@@ -582,7 +583,7 @@ def _curl(item: dict) -> str:
         parts.append(f"  -H '{header['key']}: {value}'")
     if "body" in req:
         body = req["body"]["raw"].replace("{{datasource}}", "$DS")
-        compact = json.dumps(json.loads(body.replace("$DS", "main")))
+        compact = json.dumps(json.loads(body.replace("$DS", "tsdb")))
         if len(compact) <= 90:
             parts.append(f"  -d '{compact}'")
         else:

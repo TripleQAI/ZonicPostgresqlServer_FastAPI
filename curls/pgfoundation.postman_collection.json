@@ -11,7 +11,7 @@
     },
     {
       "key": "datasource",
-      "value": "main"
+      "value": "tsdb"
     },
     {
       "key": "channel",

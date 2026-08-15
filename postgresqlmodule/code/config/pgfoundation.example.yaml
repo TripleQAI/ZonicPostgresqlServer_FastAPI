@@ -9,13 +9,14 @@
 
 datasources:
   # --- The PostgreSQL CONNECTION STRING goes here, in `dsn` ---
-  - name: main                                   # logical name you reference in code
+  - name: tsdb                                   # logical name you reference in code;
+                                                 # name it after the database it points at
     # Option A — inline DSN (fine for local dev):
     dsn: postgresql://fshadmin:fshadmin@localhost:5432/energydata
     # Option B — pull the DSN from an env var (recommended):
-    # dsn: ${env:PGF_MAIN_DSN}
+    # dsn: ${env:PGF_TSDB_DSN}
     # Option C — pull from a secret manager (Phase-0 falls back to env):
-    # dsn: ${secret:main/dsn}
+    # dsn: ${secret:tsdb/dsn}
     role: standalone                             # primary | replica | standalone
     pool: { min_size: 1, max_size: 10, acquire_timeout_seconds: 5 }
     # statement_timeout_ms: 5000

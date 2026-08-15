@@ -7,7 +7,7 @@ credential appears in this repository** ([05](./05-configuration.md)).
 
 | Env | Provider | Host | Port | Database | Login role | Notes |
 |-----|----------|------|------|----------|-----------|-------|
-| **`main`** (`tripleq-development`) | **Timescale Cloud** (AWS `us-east-1`) | `aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com` | `32064` | `tsdb` | `tsdbadmin` (admin — see §12.5) | **Direct session endpoint, no pooler** (§12.6). 2 vCPU. TLS verified (§12.3). Reached over the public internet |
+| **`tsdb`** (`tripleq-development`) | **Timescale Cloud** (AWS `us-east-1`) | `aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com` | `32064` | `tsdb` | `tsdbadmin` (admin — see §12.5) | **Direct session endpoint, no pooler** (§12.6). 2 vCPU. TLS verified (§12.3). Reached over the public internet |
 | local *(optional)* | Docker `timescale/timescaledb:latest-pg16` | `localhost` | **`5434`** (host) -> 5432 (container) | `energydata` (+ 6 others) | `fshadmin` | PostgreSQL 16.14, timescaledb 2.29.1, `max_connections=100`. The migration **source**; not enabled by default. Objects live in `client` / `dbo` / `fsh` / `utility`, **not `public`** — see below |
 
 The service URL as supplied:
@@ -24,28 +24,33 @@ postgres://tsdbadmin@aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com:32064/tsdb?s
 > Connect panel. `python check_dsn.py` at the repo root catches this and the
 > related percent-encoding traps before a server is started.
 
-### `main` is the cloud service
+### `tsdb` is the cloud service
 
-`config/pgfoundation.yaml` defines **`main` = Tiger Cloud** — the deployed
+`config/pgfoundation.yaml` defines **`tsdb` = Tiger Cloud** — the deployed
 target, and the only data source enabled by default. Its pool is tuned for a
 database across the public internet rather than a LAN: warm connections
 (`min_size: 2`, because each one costs a TLS handshake to a remote host), a 10 s
 acquire timeout, a 30 s statement timeout, and `itersize: 5000` for fewer,
 larger fetches.
 
-> **Note for anyone reading the Django project alongside this one:** there,
-> `main` meant the local Docker instance. Here it means the cloud service. A
-> call to `/v1/datasources/main/view` therefore reads a *different* database in
-> the two projects — worth knowing before comparing behaviour between them.
+> **Naming convention: the alias is the database name.** The Django project
+> used `main` for the *local Docker* instance; this project pointed the same
+> word at the *cloud* service. A saved `/v1/datasources/main/view` request
+> therefore kept working while reading an entirely different database — the
+> request looked identical and the answer was not.
+>
+> Aliases are now named after the database they open (`tsdb`, `energydata`), so
+> a URL states which database it reads. Renaming an alias breaks callers loudly,
+> which is the correct failure; silently repointing one does not.
 
 The local Docker instance remains available as an optional **second** data
-source (`local`, commented out in the config). Enabling it gives each source its
-own pool and circuit breaker, so saturating one cannot starve the other —
-managing N named sources from one process being what this layer is for
-(Requirement 1). That is the shape a migration wants: read from `local`, write
-to `main`, in one process.
+source (`energydata`, commented out in the config). Enabling it gives each
+source its own pool and circuit breaker, so saturating one cannot starve the
+other — managing N named sources from one process being what this layer is for
+(Requirement 1). That is the shape a migration wants: read from `energydata`,
+write to `tsdb`, in one process.
 
-### ⚠ If you enable `local`: `energydata` has no `public` schema
+### ⚠ If you enable `energydata`: it has no `public` schema
 
 Its objects live in `client`, `dbo`, `fsh` and `utility`, and `search_path` is
 `"$user", public`. Name-based calls against it **must** qualify the schema:
@@ -72,8 +77,8 @@ chain resolves it ([05 §5.4](./05-configuration.md)):
 ```yaml
 # config/pgfoundation.yaml — committed, no secrets
 datasources:
-  - name: main
-    dsn: ${env:PGF_MAIN_DSN}          # or ${secret:main/dsn} once a resolver is bound
+  - name: tsdb
+    dsn: ${env:PGF_TSDB_DSN}          # or ${secret:tsdb/dsn} once a resolver is bound
     role: standalone
     statement_timeout_ms: 30000        # cloud RTT — see §12.6
     pool:
@@ -87,7 +92,7 @@ datasources:
 
 ```bash
 # supplied by the platform / secret manager — never by a file in this repo
-export PGF_MAIN_DSN="postgresql://<role>:<password>@aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com:32064/tsdb?sslmode=verify-full&application_name=pgfoundation"
+export PGF_TSDB_DSN="postgresql://<role>:<password>@aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com:32064/tsdb?sslmode=verify-full&application_name=pgfoundation"
 ```
 
 `dsn` is a `SecretStr`, so it stays out of `repr`, logs, error payloads and the
@@ -247,7 +252,7 @@ foundation on the strength of the target alone.
 ## 12.9 Deployment checklist
 
 1. [ ] Least-privilege login role created (**not** `tsdbadmin`) — §12.5
-2. [ ] Password stored in the platform secret manager; `PGF_MAIN_DSN` injected at runtime — §12.2
+2. [ ] Password stored in the platform secret manager; `PGF_TSDB_DSN` injected at runtime — §12.2
 3. [ ] `sslmode=verify-full` with the CA bundle reachable — §12.3
 4. [ ] Direct vs pooled endpoint confirmed for port `32064` — §12.6
 5. [ ] `workers × Σ pool.max_size + headroom ≤ instance connection limit` — §12.4
@@ -267,7 +272,7 @@ that meets the isolation requirement is usually the right one.
 |---|---|---|---|
 | Provider change | none | `CREATE DATABASE` | provision an instance |
 | Foundation change | **none at all** | one `datasources:` entry | one `datasources:` entry |
-| New connection pool | no — reuses `main` | yes | yes |
+| New connection pool | no — reuses `tsdb` | yes | yes |
 | Connection budget | free | **same** instance limit | own limit |
 | SQL-joinable with existing data | **yes** | **no** | **no** |
 | Resource / blast-radius isolation | shared | shared CPU, RAM, disk | isolated |
@@ -282,7 +287,7 @@ PostgreSQL cannot query across databases without `dblink` / `postgres_fdw`, so:
   `/view`, `/function` and `/procedure` already accept a `"schema"` field
   ([08 §8.2](./08-api-surface.md)).
 - **Independent data** → a separate **database** is fine, and it buys a real
-  bulkhead: its own pool and its own circuit breaker, so it cannot starve `main`.
+  bulkhead: its own pool and its own circuit breaker, so it cannot starve `tsdb`.
   Fetch from both in a single call with `POST /v1/batch` in `parallel` mode —
   cross-datasource fan-out is exactly what that strategy is for
   ([06 §6.3](./06-concurrency-batch-parallel.md)).
@@ -293,8 +298,8 @@ PostgreSQL cannot query across databases without `dblink` / `postgres_fdw`, so:
 
 ```yaml
 datasources:
-  - name: main
-    dsn: ${env:PGF_MAIN_DSN}
+  - name: tsdb
+    dsn: ${env:PGF_TSDB_DSN}
   - name: analytics                 # ← the entire change
     dsn: ${env:PGF_ANALYTICS_DSN}
     role: replica

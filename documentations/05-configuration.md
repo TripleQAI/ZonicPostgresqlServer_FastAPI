@@ -24,8 +24,8 @@ Existing sections are unchanged. New sections are marked **(new)**.
 ```yaml
 # pgfoundation.yaml
 datasources:
-  - name: main
-    dsn: ${env:PGF_MAIN_DSN}            # or ${secret:main/dsn}
+  - name: tsdb
+    dsn: ${env:PGF_TSDB_DSN}            # or ${secret:tsdb/dsn}
     role: standalone                    # primary | replica | standalone
     read_only: false
     statement_timeout_ms: 5000

@@ -16,6 +16,7 @@ from psycopg.rows import dict_row, tuple_row
 from psycopg_pool import AsyncConnectionPool
 
 from ...core.errors import PoolTimeoutError
+from ...core.ports import ConnectionPort
 from ...core.models import (
     HealthStatus,
     IsolationLevel,
@@ -281,7 +282,18 @@ class PsycopgPool:
             raise PoolTimeoutError(str(exc)) from exc
         return PsycopgConnection(conn)
 
-    async def release(self, conn: PsycopgConnection) -> None:
+    async def release(self, conn: ConnectionPort) -> None:
+        # Widened to the port type. Narrowing to `PsycopgConnection` made this
+        # an unsound override — the same defect already fixed in `MeteredPool`
+        # (P4.2) — and it is what left `PsycopgPool` failing to satisfy
+        # `PoolPort`, which in turn made `PsycopgDriver` fail `DriverPort`.
+        # A pool can only return its own connections, so the check is an
+        # assertion about internal consistency, not caller input.
+        if not isinstance(conn, PsycopgConnection):
+            raise TypeError(
+                f"PsycopgPool cannot release a {type(conn).__name__}; "
+                "connections must be returned to the pool that issued them"
+            )
         await self._pool.putconn(conn.raw)
 
     async def health(self) -> HealthStatus:

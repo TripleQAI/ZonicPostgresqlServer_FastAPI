@@ -41,6 +41,7 @@ DOCS = [
     "12-deployment-targets",
     "13-implementation-plan",
     "14-build-status",
+    "15-cicd-and-deployment",
 ]
 ADRS = [
     "ADR-001-fastapi-service-shell",

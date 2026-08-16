@@ -321,9 +321,60 @@ Config only. The source is then immediately reachable at
    limit: 4 workers × `max_size: 8` is **32** more connections (§12.4). Being near
    the tier cap is on its own a reason to provision a separate service.
 
-Also confirm with the provider whether `CREATE DATABASE` is permitted on an
-existing service, and remember that **extensions are per-database in PostgreSQL** —
-a newly created database does not automatically have TimescaleDB enabled.
+### Verified against this service
+
+Checked directly, so these are facts about `tripleq-development` rather than
+general advice:
+
+| Question | Answer |
+|---|---|
+| May `tsdbadmin` run `CREATE DATABASE`? | **Yes** — `rolcreatedb = true`. No new AWS service needed. |
+| Connection headroom | **22 of 200** in use. A second pool is comfortably affordable (§12.4). |
+| What does a new database inherit? | `template1` contains **`plpgsql` only**. |
+
+That last row is the one that surprises people. `tsdb` has `timescaledb`,
+`timescaledb_toolkit`, `vector`, `vectorscale`, `postgres_fdw`,
+`pg_stat_statements` and `pg_buffercache` — **none of which a new database gets**,
+because extensions are per-database and this service's `template1` is bare. A
+new database is plain PostgreSQL until you say otherwise:
+
+```sql
+CREATE DATABASE analytics;
+\c analytics
+CREATE EXTENSION IF NOT EXISTS timescaledb;   -- only if you need it
+```
+
+`CREATE DATABASE` cannot run inside a transaction block, so issue it on its own
+rather than inside a migration that wraps statements in one.
+
+### Wiring it to the API
+
+The DSN differs from `PGF_TSDB_DSN` in **the path only** — same host, port, user
+and password:
+
+```bash
+# .env  (gitignored)
+PGF_ANALYTICS_DSN=postgres://tsdbadmin:<password>@aqy26lurzx.lhy6ly0as0.tsdb.cloud.timescale.com:32064/analytics?sslmode=verify-full&application_name=pgfoundation
+```
+
+```yaml
+# config/pgfoundation.yaml
+  - name: analytics
+    dsn: ${env:PGF_ANALYTICS_DSN}
+    pool: { min_size: 1, max_size: 5, acquire_timeout_seconds: 10 }
+```
+
+Restart, then it is reachable at `/v1/datasources/analytics/…`, appears in
+`GET /v1/datasources` and in `/health`, and is batch-dispatchable immediately.
+
+Two limits to keep consistent when adding a pool:
+
+* `batch.max_concurrency` **must be ≤** `concurrency.max_inflight_total` — this
+  one is enforced, and the service refuses to start otherwise.
+* `concurrency.max_inflight_total` should stay within **Σ `pool.max_size`** across
+  all sources. This is a comment, not a check: exceed it and admission control
+  lets through work the pools cannot hold, turning a fast 503 into a slow pool
+  timeout (§12.4).
 
 ### Recommendation
 

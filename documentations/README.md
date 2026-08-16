@@ -61,6 +61,7 @@ queries, executed with a chosen concurrency strategy against N pools."
 | [12 — Deployment Targets & Environments](./12-deployment-targets.md) | The Timescale Cloud (AWS) target, DSN handling, TLS, connection budget, least-privilege roles, deployment checklist. |
 | [13 — Implementation Plan, Phase by Phase](./13-implementation-plan.md) | **Start here to build.** The six phases as ~60 tasks with dependencies, sizing, exit criteria and a risk register. |
 | [14 — Build Status](./14-build-status.md) | **What is actually built.** Phase status, corrections made while building, known gaps. |
+| [15 — CI/CD and AWS Deployment Plan](./15-cicd-and-deployment.md) | **How code reaches AWS.** Branch→CI→ECR→ECS Fargate pipeline, the connection-budget ceiling that rules out serverless, and the prod-profile prerequisites. |
 
 ## Decisions (ADRs)
 

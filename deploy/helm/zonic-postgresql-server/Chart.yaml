@@ -1,0 +1,6 @@
+apiVersion: v2
+name: zonic-postgresql-server
+description: pgfoundation FastAPI service — Kubernetes deployment (infra repo deployment plan §12)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

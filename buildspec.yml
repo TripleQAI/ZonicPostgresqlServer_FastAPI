@@ -1,0 +1,39 @@
+# CodeBuild project: tripleq-tooling-zonic-postgresql-server (tooling account,
+# infra repo environments/tooling/network). Builds, scans, and pushes the image;
+# Jenkins reads IMAGE_DIGEST back from the build's exported environment variables
+# — no S3 artifact needed for the digest hand-off.
+version: 0.2
+
+env:
+  exported-variables:
+    - IMAGE_DIGEST
+
+phases:
+  install:
+    commands:
+      - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      - curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+      - IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$CODEBUILD_RESOLVED_SOURCE_VERSION"
+
+  build:
+    commands:
+      - echo "Building $IMAGE_URI"
+      - docker build -t "$IMAGE_URI" postgresqlmodule/code
+
+  post_build:
+    commands:
+      # Fail the build on critical/high findings — no exception mechanism yet;
+      # add one deliberately if a real finding needs a tracked waiver.
+      - syft "$IMAGE_URI" -o spdx-json > sbom.spdx.json
+      - trivy image --exit-code 1 --severity CRITICAL,HIGH "$IMAGE_URI"
+      - docker push "$IMAGE_URI"
+      - IMAGE_DIGEST=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$CODEBUILD_RESOLVED_SOURCE_VERSION" --query 'imageDetails[0].imageDigest' --output text)
+      - echo "Pushed $IMAGE_URI@$IMAGE_DIGEST"
+
+artifacts:
+  files:
+    - sbom.spdx.json

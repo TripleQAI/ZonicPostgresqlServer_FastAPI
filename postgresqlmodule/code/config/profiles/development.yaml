@@ -1,0 +1,24 @@
+# development overlay — the real, EKS-deployed development environment
+# (dev.tripleq.ai). Distinct from `dev.yaml`, which is explicitly for local-only use
+# ("never use for anything reachable from outside") — this one is reachable by other
+# services inside the VPC, so it can't inherit that profile's permissiveness.
+#
+# auth stays disabled here, matching doc 14 §14.5's standing constraint ("do not
+# onboard a second consuming API until the deployment carries real caller identity")
+# — infra deployment plan §12.9 decision 1 is still open (no real caller names
+# confirmed). Flip to `provider: token` + populate `policy.callers` once they are —
+# never `provider: mtls` behind a plain/Ingress-created ALB (§12.8; it trusts a
+# client-supplied header the ALB does not strip).
+
+auth:
+  enabled: false
+
+api:
+  docs_enabled: true        # internal-only ALB; useful for other engineers testing against it
+  enable_raw_sql: false     # never ships past local dev, regardless of auth state
+
+observability:
+  provider: none            # otel adapter doesn't exist yet (§12.8c) — only metrics does
+  metrics_enabled: true
+  log_level: info
+  slow_query_ms: 150

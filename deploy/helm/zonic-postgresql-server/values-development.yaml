@@ -1,0 +1,23 @@
+# development account (001634074733) — the real, EKS-deployed environment.
+# Deployed automatically on every merge to main (deployment plan §12.5).
+
+image:
+  repository: "001634074733.dkr.ecr.us-east-1.amazonaws.com/zonic-postgresql-server-fastapi"
+
+env:
+  PGF_PROFILE: development
+  # config/profiles/development.yaml — auth deliberately off until a real caller
+  # exists (see that file's own comment, and deployment plan §12.9 decision 1).
+
+secret:
+  dsnSecretName: tripleq/development/tiger-cloud-database-url
+
+ingress:
+  # No Route 53 record exists yet for this — ALB controller module's own README
+  # flags DNS as out of its scope. Until one exists, resolve via the ALB's own
+  # AWS-generated internal DNS name (`kubectl get ingress -n zonic-postgresql-server`)
+  # rather than a stable hostname.
+  host: "internal-pgfoundation.dev.tripleq.ai"
+
+networkPolicy:
+  vpcCidr: "10.20.0.0/16"

@@ -1,0 +1,27 @@
+# production account (849662766042). NOT deployed by this pass — deployment plan
+# §12.9 lists the open decisions (auth provider, caller policy) that block it, and
+# `config/profiles/prod.yaml` currently sets `provider: mtls`, which §12.8 already
+# found unsafe behind a plain/Ingress-created ALB. Do not deploy with this file
+# as-is; either fix that profile to `provider: token` (recommended) or replace it
+# with a `production` profile mirroring `development.yaml`'s posture, matching the
+# same reasoning that motivated creating `development.yaml` in the first place.
+
+image:
+  repository: "849662766042.dkr.ecr.us-east-1.amazonaws.com/zonic-postgresql-server-fastapi"
+
+env:
+  PGF_PROFILE: prod   # see the warning above — this profile is not safe to deploy as-is yet
+
+secret:
+  dsnSecretName: tripleq/production/tiger-cloud-database-url
+
+ingress:
+  host: "internal-pgfoundation.prod.tripleq.ai"
+
+networkPolicy:
+  vpcCidr: "10.30.0.0/16"
+
+# Production requirements beyond development's, per the app repo's own §16 in the
+# infra deployment plan (min 2 Pods across failure domains — already the chart
+# default; deletion protection on the Ingress-created ALB is a target-group
+# attribute, not yet wired here — add before actually deploying to production).

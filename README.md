@@ -1,12 +1,19 @@
 # ZonicPostgresqlServer_FastAPI
 
-A **design plan** for rebuilding the PostgreSQL Database Foundation Server
-(`pgfoundation`) on **FastAPI**, ported from
+A rebuild of the PostgreSQL Database Foundation Server (`pgfoundation`) on
+**FastAPI**, ported from
 [`ZonicPostgresqlServer_DjangoApp`](../ZonicPostgresqlServer_DjangoApp).
 
-> **Status: design only — no code yet.**
+> **Status: implemented, being deployed.** Phases P0–P5 are mostly complete —
+> 225 tests passing, ruff/mypy clean — see
+> [`documentations/14-build-status.md`](documentations/14-build-status.md) for the
+> exact phase-by-phase state. CI/CD is now configured (`Dockerfile`, `Jenkinsfile`,
+> the `deploy/helm/zonic-postgresql-server` chart) per
+> [`documentations/15-cicd-and-deployment.md`](documentations/15-cicd-and-deployment.md)
+> and the infra repo's `docs/TripleQAI-enterprise-aws-cicd-deployment-plan.md` §12;
+> first deploy to the development EKS environment is in progress.
 >
-> 🌐 **Read it in a browser:** [`documentations/pgfoundation-fastapi-design.html`](documentations/pgfoundation-fastapi-design.html)
+> 🌐 **Read the original design plan in a browser:** [`documentations/pgfoundation-fastapi-design.html`](documentations/pgfoundation-fastapi-design.html)
 > — the whole plan rendered, with navigation, diagrams and print-to-PDF.
 >
 > 📄 **Or as one Markdown file:** [`documentations/pgfoundation-fastapi-design.md`](documentations/pgfoundation-fastapi-design.md)

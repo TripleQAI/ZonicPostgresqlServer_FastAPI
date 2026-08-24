@@ -1,0 +1,35 @@
+{{- if .Values.ingress.enabled }}
+# scheme: internal is the whole point — nothing about this API belongs on the
+# public internet (deployment plan §12.2 / app repo's own §15.3 reasoning: raw
+# data access, caller-level not end-user-level authorization).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: zonic-postgresql-server
+  namespace: {{ .Values.namespace }}
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: {{ .Values.ingress.scheme }}
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: {{ .Values.ingress.healthCheckPath }}
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/success-codes: "200"
+    # An NDJSON stream or SSE subscription with a gap longer than this is silently
+    # cut by the ALB — the client sees a truncated stream, not an error (app repo's
+    # §15.10). /subscribe additionally needs an SSE heartbeat, application-side,
+    # before it's safe behind this ALB — deployment plan §12.7 P-CD5, not done yet.
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds={{ .Values.ingress.idleTimeoutSeconds }}
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds={{ .Values.ingress.deregistrationDelaySeconds }}
+spec:
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: zonic-postgresql-server
+                port:
+                  number: {{ .Values.container.port }}
+{{- end }}

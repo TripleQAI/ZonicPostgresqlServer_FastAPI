@@ -6,8 +6,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
@@ -57,8 +61,10 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    # Only when a live database is configured; never blocks a fork PR.
-    if: github.event_name == 'push'
+    # main only — feature-branch pushes now trigger CI too (see `on.push` above),
+    # and these tests `CREATE TABLE` against PGF_TEST_DSN. Never run them on a
+    # branch push, and never point PGF_TEST_DSN at `tsdb` (see deployment plan §12.9).
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

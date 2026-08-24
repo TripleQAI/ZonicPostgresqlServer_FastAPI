@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zonic-postgresql-server
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: zonic-postgresql-server
+spec:
+  # minReplicas at rest; the HPA (hpa.yaml) takes over scaling within
+  # [minReplicas, maxReplicas] once deployed.
+  replicas: {{ .Values.replicaCount.min }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Old Pods only drain once new ones pass /ready — a broken image never
+      # removes serving capacity (deployment plan §12.2's ECS-circuit-breaker
+      # equivalent, combined with `helm upgrade --atomic` at the release level).
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zonic-postgresql-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zonic-postgresql-server
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: zonic-postgresql-server
+      containers:
+        - name: zonic-postgresql-server
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.container.port }}
+              name: http
+          env:
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            - name: {{ .Values.secret.envVarName }}
+              valueFrom:
+                secretKeyRef:
+                  name: zonic-postgresql-server-dsn
+                  key: {{ .Values.secret.envVarName }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.container.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tsdb-dsn
+              mountPath: /mnt/secrets-store
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tsdb-dsn
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: zonic-postgresql-server-dsn
+        - name: tmp
+          emptyDir: {}

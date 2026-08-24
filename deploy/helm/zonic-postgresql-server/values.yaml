@@ -1,0 +1,74 @@
+# Shared defaults. Per-environment overrides live in values-development.yaml /
+# values-production.yaml — see infra repo docs/TripleQAI-enterprise-aws-cicd-
+# deployment-plan.md §12.6 for the full chart-level design.
+
+image:
+  repository: ""   # set per-environment (ECR registry/repo)
+  digest: ""        # set at deploy time: --set image.digest=sha256:...  — never a mutable tag
+  pullPolicy: IfNotPresent
+
+namespace: zonic-postgresql-server
+
+replicaCount:
+  min: 2
+  max: 6
+  # HARD CAP — the connection-budget constraint, deployment plan §12.3:
+  #   connections held = replicas × 1 worker × pool.max_size (10)
+  # 6 × 10 = 60, 30% of Tiger Cloud's real 200-connection ceiling. Do not raise
+  # without re-deriving this number against the real ceiling at the time.
+  targetCpuUtilizationPercent: 70
+  # CPU is a proxy metric — the service is I/O-bound, not CPU-bound (deployment
+  # plan §15.3 reasoning in the app repo's own CI/CD doc). maxReplicas is the
+  # control that actually matters; this just decides when to scale within it.
+
+container:
+  port: 8000
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+env:
+  PGF_CONFIG: /app/config/pgfoundation.yaml
+  PGF_SERVER__HOST: "0.0.0.0"
+  PGF_SERVER__PORT: "8000"
+  PGF_SERVER__WORKERS: "1"
+  PGF_OBSERVABILITY__METRICS_ENABLED: "true"
+
+secret:
+  # AWS Secrets Manager entry name (not full ARN — avoids the random ARN suffix).
+  # Already created by Terraform per environment; see environments/<env>/network/
+  # main.tf's module.secrets_manager in the infra repo.
+  dsnSecretName: ""
+  region: us-east-1
+  envVarName: PGF_TSDB_DSN
+
+serviceAccount:
+  name: zonic-postgresql-server
+  # No eks.amazonaws.com/role-arn annotation — EKS Pod Identity associates by
+  # service-account name via modules/eks-pod-identity in the infra repo, not IRSA.
+
+ingress:
+  enabled: true
+  scheme: internal
+  healthCheckPath: /ready
+  idleTimeoutSeconds: 300
+  deregistrationDelaySeconds: 300
+  host: ""   # set per-environment; no automatic DNS yet (ALB controller module's
+             # own README flags this — either a manual Route 53 record or ExternalDNS)
+
+podDisruptionBudget:
+  minAvailable: 1
+
+# Must exceed the ALB's deregistration delay above's drain window (300s) minus the
+# time the ALB itself takes to stop sending new requests — 120s matches the app
+# doc's own ECS stopTimeout recommendation (§15.10).
+terminationGracePeriodSeconds: 120
+
+networkPolicy:
+  enabled: true
+  # Egress the Pod actually needs: DNS, AWS service endpoints (VPC endpoints, same
+  # CIDR as the VPC), and Tiger Cloud (public internet over the NAT gateway — see
+  # infra repo modules/vpc). Kept broad on the AWS-endpoint/internet leg rather than
+  # pinned to Tiger Cloud's specific IP, since Tiger Cloud's endpoint IP is not
+  # Terraform-managed and could change.
+  vpcCidr: ""   # set per-environment (10.20.0.0/16 dev, 10.30.0.0/16 prod)

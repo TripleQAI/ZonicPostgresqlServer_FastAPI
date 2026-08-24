@@ -1,0 +1,47 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default-deny plus explicit required flows. NetworkPolicy can't reference an ALB
+# directly, so ingress here stays namespace-scoped rather than pinned to the ALB's
+# ENIs — the real perimeter for external callers is the AWS security group
+# (deployment plan §12.2), not this policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zonic-postgresql-server
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: zonic-postgresql-server
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from: []
+      ports:
+        - protocol: TCP
+          port: {{ .Values.container.port }}
+  egress:
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # VPC endpoints (Secrets Manager, STS, etc.) — same CIDR as the VPC itself
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.vpcCidr | quote }}
+      ports:
+        - protocol: TCP
+          port: 443
+    # Tiger Cloud — a public endpoint reached over the NAT gateway. Its IP isn't
+    # Terraform-managed, so this can't be pinned tighter without breaking on Tiger
+    # Cloud's own infrastructure changes.
+    - to:
+        - ipBlock:
+            cidr: "0.0.0.0/0"
+      ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

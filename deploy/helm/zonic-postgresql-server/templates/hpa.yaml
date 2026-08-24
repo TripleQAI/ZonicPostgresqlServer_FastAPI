@@ -1,0 +1,22 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zonic-postgresql-server
+  namespace: {{ .Values.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zonic-postgresql-server
+  minReplicas: {{ .Values.replicaCount.min }}
+  # HARD CAP — the connection-budget constraint (values.yaml, deployment plan
+  # §12.3). Do not raise without re-deriving it against the real Tiger Cloud
+  # connection ceiling at the time.
+  maxReplicas: {{ .Values.replicaCount.max }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.replicaCount.targetCpuUtilizationPercent }}

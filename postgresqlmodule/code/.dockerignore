@@ -1,0 +1,18 @@
+# Build context is postgresqlmodule/code (see Dockerfile / buildspec.yml).
+# Excluding .env is not an optimisation — it's what stops a real credential from
+# being baked into an image layer.
+
+.env
+.env.*
+!.env.example
+
+tests/
+venv314/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.git/
+.gitignore
+*.md

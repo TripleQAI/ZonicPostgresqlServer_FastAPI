@@ -218,23 +218,30 @@ class PsycopgPool:
     """Wraps one ``AsyncConnectionPool`` behind ``PoolPort``."""
 
     def __init__(self, dsn: str, policy: PoolPolicy) -> None:
+        self._dsn = dsn
         self._policy = policy
         #: Last warm-up failure, or None. Surfaced by health/readiness (P4.3).
         self.last_warmup_error: str | None = None
+        #: Consecutive health() failures since the last success or reset — see
+        #: health()'s comment on why this triggers a pool rebuild.
+        self._consecutive_health_failures = 0
+        self._pool = self._build_pool()
+
+    def _build_pool(self) -> AsyncConnectionPool:
         # Bound each connect attempt so an unreachable DB fails FAST instead of
         # hanging — otherwise the pool's reconnect worker stalls shutdown and can
         # leave the process (and its port) held open. Respect an explicit
         # connect_timeout already present in the DSN.
         connect_kwargs = {}
-        if "connect_timeout" not in dsn:
-            connect_kwargs["connect_timeout"] = max(2, int(policy.acquire_timeout_seconds))
-        self._pool = AsyncConnectionPool(
-            conninfo=dsn,
-            min_size=policy.min_size,
-            max_size=policy.max_size,
-            max_idle=policy.max_idle_seconds,
-            max_lifetime=policy.max_lifetime_seconds,
-            timeout=policy.acquire_timeout_seconds,
+        if "connect_timeout" not in self._dsn:
+            connect_kwargs["connect_timeout"] = max(2, int(self._policy.acquire_timeout_seconds))
+        return AsyncConnectionPool(
+            conninfo=self._dsn,
+            min_size=self._policy.min_size,
+            max_size=self._policy.max_size,
+            max_idle=self._policy.max_idle_seconds,
+            max_lifetime=self._policy.max_lifetime_seconds,
+            timeout=self._policy.acquire_timeout_seconds,
             kwargs=connect_kwargs,
             open=False,
             configure=self._configure,
@@ -303,8 +310,30 @@ class PsycopgPool:
                 await conn.execute(QuerySpec("SELECT 1"))
             finally:
                 await self.release(conn)
+            self._consecutive_health_failures = 0
             return HealthStatus.HEALTHY
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            self._consecutive_health_failures += 1
+            # psycopg_pool's own background reconnect worker can permanently
+            # give up after its first connect failure and never recover on its
+            # own, even once the database becomes reachable again — a known
+            # upstream issue (psycopg/psycopg#370), not something tunable via
+            # PoolPolicy. Most likely to bite a freshly-started pod racing a
+            # transient DNS/CNI warm-up window: found in real use, 2026-08-26 —
+            # two out of three pods got stuck reporting "down" indefinitely
+            # after one early "Temporary failure in name resolution", even
+            # though a fresh connection attempt moments later succeeded fine.
+            # Rebuilding the pool object after a few consecutive failures (not
+            # on the first — that's likely ordinary transient contention, and
+            # rebuilding is destructive to whatever connections the old pool
+            # still holds) gives it a fresh reconnect worker rather than
+            # trusting the stuck one.
+            if self._consecutive_health_failures >= 3:
+                self.last_warmup_error = f"{type(exc).__name__}: {exc}"
+                await self._pool.close()
+                self._pool = self._build_pool()
+                await self.open()
+                self._consecutive_health_failures = 0
             return HealthStatus.DOWN
 
 

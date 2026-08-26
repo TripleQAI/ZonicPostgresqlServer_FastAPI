@@ -28,7 +28,12 @@ pipeline {
       // will actually be built, not what was proposed.
       steps {
         dir('postgresqlmodule/code') {
-          sh 'pip install -r requirements.txt'
+          // The Jenkins controller's default `python3`/`pip` is 3.9 (AL2023 base) — too
+          // old for this project (pyproject.toml/ci.yml both pin 3.12; core/models.py
+          // uses PEP 604 `X | Y` union syntax in a module-level type alias, which
+          // TypeErrors on 3.9 at import time). python3.12 is installed alongside it
+          // specifically for this.
+          sh 'python3.12 -m pip install --user -r requirements.txt'
           sh 'ruff check .'
           sh 'ruff format --check .'
           sh 'mypy pgfoundation/core --follow-imports=silent'

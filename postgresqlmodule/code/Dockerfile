@@ -9,6 +9,13 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # --- runtime stage -----------------------------------------------------------
 FROM python:3.12-slim
+
+# Picks up point-fixes already available in Debian's repos (e.g. CVE-2026-14456,
+# fixed in libssl3t64/openssl 3.5.7-1~deb13u2) without waiting for a new upstream
+# python:3.12-slim tag. Everything else the trivy scan flags on this base image
+# has no upstream fix yet — see .trivyignore (repo root) for the documented list.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /install /usr/local
 WORKDIR /app
 COPY pgfoundation/     ./pgfoundation/

@@ -32,10 +32,12 @@ phases:
 
   post_build:
     commands:
-      # Fail the build on critical/high findings — no exception mechanism yet;
-      # add one deliberately if a real finding needs a tracked waiver.
+      # Fail the build on critical/high findings — waivers go in .trivyignore
+      # (repo root), each with a documented reason. See that file for the
+      # current list (base-image OS packages this service doesn't use, with no
+      # upstream fix yet).
       - syft "$IMAGE_URI" -o spdx-json > sbom.spdx.json
-      - trivy image --exit-code 1 --severity CRITICAL,HIGH "$IMAGE_URI"
+      - trivy image --exit-code 1 --severity CRITICAL,HIGH --ignorefile .trivyignore "$IMAGE_URI"
       - docker push "$IMAGE_URI"
       - IMAGE_DIGEST=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
       - echo "Pushed $IMAGE_URI@$IMAGE_DIGEST"

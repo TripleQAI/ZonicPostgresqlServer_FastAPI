@@ -70,11 +70,18 @@ pipeline {
           // CodeBuild try to resolve it as a version ID (needing s3:ListBucketVersions,
           // and doomed to fail even with that grant, since it isn't one). Not needed
           // anyway: the object key already embeds the git commit uniquely.
+          //
+          // Without --source-version, CodeBuild never populates
+          // CODEBUILD_RESOLVED_SOURCE_VERSION (it's only set when the source has an
+          // actual resolved version) — buildspec.yml would otherwise tag the image
+          // "repo:" with an empty tag. Passing the commit through explicitly as
+          // IMAGE_TAG instead.
           def buildId = sh(
             script: """
               aws codebuild start-build \
                 --project-name ${CODEBUILD_PROJECT} \
                 --source-location-override ${env.CI_ARTIFACT_BUCKET}/${sourceKey} \
+                --environment-variables-override name=IMAGE_TAG,value=${env.GIT_COMMIT},type=PLAINTEXT \
                 --query 'build.id' --output text
             """,
             returnStdout: true

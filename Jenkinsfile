@@ -160,16 +160,41 @@ pipeline {
       when { branch 'main' }
       steps {
         script {
-          // Internal ALB — only reachable from inside the VPC. Jenkins reaches it
-          // via the Transit Gateway (bootstrap/IMPORT.md Steps 9-10); the
-          // Ingress-created ALB's security group needs to allow tooling's CIDR —
-          // see deployment plan §12.5 point 7 if this step fails with a timeout
-          // rather than a real HTTP error.
-          def host = sh(
-            script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'",
+          // The Deploy stage's assumed-role credentials are scoped to its own
+          // withEnv block and don't carry over — kubectl's exec-based auth plugin
+          // (aws eks get-token) needs valid credentials active in THIS stage too,
+          // or it silently falls back to Jenkins' own instance role, which has no
+          // EKS access entry on this cluster: "You must be logged in to the
+          // server (Unauthorized)". Found in real use, 2026-08-26.
+          def creds = sh(
+            script: """
+              aws sts assume-role \
+                --role-arn ${DEV_DEPLOY_ROLE_ARN} \
+                --role-session-name jenkins-smoke-test-development \
+                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                --output text
+            """,
             returnStdout: true
-          ).trim()
-          sh "curl -fsS --max-time 10 http://${host}/ready"
+          ).trim().split()
+
+          withEnv([
+            "AWS_ACCESS_KEY_ID=${creds[0]}",
+            "AWS_SECRET_ACCESS_KEY=${creds[1]}",
+            "AWS_SESSION_TOKEN=${creds[2]}",
+          ]) {
+            sh "aws eks update-kubeconfig --name ${DEV_EKS_CLUSTER} --region ${AWS_REGION}"
+
+            // Internal ALB — only reachable from inside the VPC. Jenkins reaches it
+            // via the Transit Gateway (bootstrap/IMPORT.md Steps 9-10); the
+            // Ingress-created ALB's security group needs to allow tooling's CIDR —
+            // see deployment plan §12.5 point 7 if this step fails with a timeout
+            // rather than a real HTTP error.
+            def host = sh(
+              script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'",
+              returnStdout: true
+            ).trim()
+            sh "curl -fsS --max-time 10 http://${host}/ready"
+          }
         }
       }
     }

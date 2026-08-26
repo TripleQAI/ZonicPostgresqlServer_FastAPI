@@ -1,0 +1,38 @@
+# Trivy ignore list for the zonic-postgresql-server-fastapi runtime image.
+#
+# Every entry here is an OS-level package that ships with the python:3.12-slim
+# (Debian 13 "trixie") base image and is not exercised by this application at
+# runtime (no perl, no gzip/ncurses/sqlite3/acl usage anywhere in this codebase).
+# Each CVE below currently has no upstream Debian fix available (or Debian has
+# explicitly deferred one) as of the scan that first surfaced it, 2026-08-26 —
+# `docker build` + `apt-get upgrade` alone cannot resolve these; they're pinned
+# here rather than left to fail every build until Debian ships a patch.
+#
+# Re-check this list periodically (e.g. when bumping the base image) and remove
+# entries once a real fix lands — don't let it become a permanent blanket waiver.
+
+# gzip — buffer overflow in LZH decompression, no fix available
+CVE-2026-41992
+
+# libacl1 — symlink traversal privilege escalation, no fix available
+CVE-2026-54369
+
+# ncurses (libncursesw6, libtinfo6, ncurses-base, ncurses-bin) — buffer overflow,
+# no fix available
+CVE-2025-69720
+
+# libsqlite3-0 — arbitrary code execution / crash via crafted FTS5 data, no fix
+# available
+CVE-2026-11822
+CVE-2026-11824
+
+# perl-base and its bundled CPAN modules — none of this is invoked by this
+# service (no perl scripts, no Archive::Tar/IO::Compress/Storable usage)
+CVE-2026-13221
+CVE-2026-8376
+CVE-2026-42496
+CVE-2026-42497
+CVE-2026-48962
+CVE-2026-57432
+CVE-2026-57433
+CVE-2026-9538

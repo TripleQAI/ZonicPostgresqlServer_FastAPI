@@ -54,7 +54,12 @@ pipeline {
           // "consumes a source bundle produced by Jenkins").
           def sourceKey = "zonic-postgresql-server-fastapi/source/${env.GIT_COMMIT}.zip"
           sh "zip -r source.zip . -x '.git/*'"
-          sh "aws s3 cp source.zip s3://${env.CI_ARTIFACT_BUCKET}/${sourceKey}"
+          // The bucket policy explicitly denies any PutObject that doesn't request
+          // aws:kms encryption — bucket default encryption alone does not satisfy
+          // that condition, since it checks the header on the request itself, not
+          // the resulting object. --sse-kms-key-id pins it to the same CMK the
+          // Jenkins instance role already has kms:GenerateDataKey/Decrypt on.
+          sh "aws s3 cp source.zip s3://${env.CI_ARTIFACT_BUCKET}/${sourceKey} --sse aws:kms --sse-kms-key-id alias/tripleq-tooling-ci-artifacts"
 
           // Jenkins uses its own EC2 instance role here — CodeBuild lives in the
           // same account (tooling), no cross-account assume-role needed.

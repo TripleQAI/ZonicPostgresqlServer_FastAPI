@@ -2,6 +2,12 @@
 # infra repo environments/tooling/network). Builds, scans, and pushes the image;
 # Jenkins reads IMAGE_DIGEST back from the build's exported environment variables
 # — no S3 artifact needed for the digest hand-off.
+#
+# Uses $IMAGE_TAG (a Jenkins-supplied --environment-variables-override, the git
+# commit SHA) rather than $CODEBUILD_RESOLVED_SOURCE_VERSION — that variable is
+# only auto-populated when the source has an actual resolved version (e.g. a git
+# ref); this project's S3 source has no --source-version override (see Jenkinsfile
+# for why), so it comes back empty, producing an invalid "repo:" image tag.
 version: 0.2
 
 env:
@@ -17,7 +23,7 @@ phases:
   pre_build:
     commands:
       - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
-      - IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$CODEBUILD_RESOLVED_SOURCE_VERSION"
+      - IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
   build:
     commands:
@@ -31,7 +37,7 @@ phases:
       - syft "$IMAGE_URI" -o spdx-json > sbom.spdx.json
       - trivy image --exit-code 1 --severity CRITICAL,HIGH "$IMAGE_URI"
       - docker push "$IMAGE_URI"
-      - IMAGE_DIGEST=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$CODEBUILD_RESOLVED_SOURCE_VERSION" --query 'imageDetails[0].imageDigest' --output text)
+      - IMAGE_DIGEST=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
       - echo "Pushed $IMAGE_URI@$IMAGE_DIGEST"
 
 artifacts:

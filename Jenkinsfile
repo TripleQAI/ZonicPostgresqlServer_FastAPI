@@ -63,12 +63,18 @@ pipeline {
 
           // Jenkins uses its own EC2 instance role here — CodeBuild lives in the
           // same account (tooling), no cross-account assume-role needed.
+          //
+          // No --source-version here: for an S3-type source, CodeBuild treats that
+          // flag as an S3 object *version ID* (versioning is on for this bucket),
+          // not an arbitrary string — passing the git commit SHA there made
+          // CodeBuild try to resolve it as a version ID (needing s3:ListBucketVersions,
+          // and doomed to fail even with that grant, since it isn't one). Not needed
+          // anyway: the object key already embeds the git commit uniquely.
           def buildId = sh(
             script: """
               aws codebuild start-build \
                 --project-name ${CODEBUILD_PROJECT} \
                 --source-location-override ${env.CI_ARTIFACT_BUCKET}/${sourceKey} \
-                --source-version ${env.GIT_COMMIT} \
                 --query 'build.id' --output text
             """,
             returnStdout: true

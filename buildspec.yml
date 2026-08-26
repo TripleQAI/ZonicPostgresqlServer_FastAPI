@@ -39,7 +39,10 @@ phases:
       - syft "$IMAGE_URI" -o spdx-json > sbom.spdx.json
       - trivy image --exit-code 1 --severity CRITICAL,HIGH --ignorefile .trivyignore "$IMAGE_URI"
       - docker push "$IMAGE_URI"
-      - IMAGE_DIGEST=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
+      # --registry-id is required: bare --repository-name defaults to the caller's
+      # OWN account (tooling), but this repo lives in development's account —
+      # ECR_REGISTRY's leading segment is that account ID.
+      - IMAGE_DIGEST=$(aws ecr describe-images --registry-id "${ECR_REGISTRY%%.*}" --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
       - echo "Pushed $IMAGE_URI@$IMAGE_DIGEST"
 
 artifacts:

@@ -67,7 +67,7 @@ pipeline {
             script: """
               aws codebuild start-build \
                 --project-name ${CODEBUILD_PROJECT} \
-                --source-location-override s3://${env.CI_ARTIFACT_BUCKET}/${sourceKey} \
+                --source-location-override ${env.CI_ARTIFACT_BUCKET}/${sourceKey} \
                 --source-version ${env.GIT_COMMIT} \
                 --query 'build.id' --output text
             """,

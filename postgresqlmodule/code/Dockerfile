@@ -1,14 +1,19 @@
 # See docs (infra repo) TripleQAI-enterprise-aws-cicd-deployment-plan.md §12.4 for
 # the reasoning behind every line here — this file intentionally mirrors that spec.
 
+# Pulled via ECR Public's mirror, not docker.io directly — CodeBuild's shared NAT IP
+# hits Docker Hub's anonymous pull rate limit (429 Too Many Requests) under repeated
+# builds; ECR Public has no such limit for AWS-networked pulls. Same image content.
+# Found in real use, 2026-08-26.
+
 # --- build stage -----------------------------------------------------------
-FROM python:3.12-slim AS build
+FROM public.ecr.aws/docker/library/python:3.12-slim AS build
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # --- runtime stage -----------------------------------------------------------
-FROM python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 # Picks up point-fixes already available in Debian's repos (e.g. CVE-2026-14456,
 # fixed in libssl3t64/openssl 3.5.7-1~deb13u2) without waiting for a new upstream

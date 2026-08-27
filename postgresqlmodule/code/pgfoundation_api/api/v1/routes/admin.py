@@ -34,7 +34,12 @@ async def list_datasources(
 async def health(
     foundation: Annotated[DataFoundation, Depends(get_foundation)],
 ) -> HealthOut:
-    return await _health(foundation)
+    # Deliberately not _health() — see the unversioned /health's docstring
+    # (pgfoundation_api/ops.py) for why liveness must not depend on DB latency.
+    return HealthOut(
+        status="healthy",
+        datasources=dict.fromkeys(foundation.names(), "unknown"),
+    )
 
 
 @router.get("/ready", response_model=HealthOut, summary="Readiness (v1 alias)")

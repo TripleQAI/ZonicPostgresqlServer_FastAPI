@@ -68,8 +68,22 @@ async def health(
     orchestrator to kill an otherwise healthy process — which fixes nothing and
     removes the thing that would have recovered. Database state belongs to
     readiness.
+
+    Deliberately does NOT call ``_health()`` (unlike ``/ready``) — that performs a
+    real ``SELECT 1`` per datasource, which can legitimately take seconds under
+    WAN latency to a remote database (Tiger Cloud) or a still-warming pool right
+    after startup. Calling it here would make liveness exactly as DB-latency-
+    dependent as readiness, contradicting this docstring's own reasoning above —
+    confirmed in real use, 2026-08-27: a cold pool on a fresh pod made /health
+    itself slow enough to blow past the probe's timeout, triggering the exact
+    kill-a-healthy-process cycle this endpoint exists to avoid. ``datasources``
+    lists known names without probing them, so the response shape stays stable
+    for any client already parsing it.
     """
-    return await _health(foundation)
+    return HealthOut(
+        status="healthy",
+        datasources=dict.fromkeys(foundation.names(), "unknown"),
+    )
 
 
 @router.get("/ready", response_model=HealthOut, summary="Readiness")

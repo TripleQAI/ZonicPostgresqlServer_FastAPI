@@ -19,11 +19,16 @@ from pgfoundation_api.settings import ServiceSettings, load_service_settings
 
 
 async def test_health_reports_healthy(client):
+    """Liveness never queries the database (2026-08-27 fix) — ``datasources``
+    lists known names without probing them, so it reads "unknown" here even
+    though the fake driver would report "healthy" if asked. That's the point:
+    a slow/cold database must not make liveness slow too.
+    """
     response = await client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "healthy"
-    assert body["datasources"] == {"orders": "healthy"}
+    assert body["datasources"] == {"orders": "unknown"}
 
 
 async def test_ready_reports_healthy(client):

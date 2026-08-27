@@ -189,11 +189,22 @@ pipeline {
             // Ingress-created ALB's security group needs to allow tooling's CIDR —
             // see deployment plan §12.5 point 7 if this step fails with a timeout
             // rather than a real HTTP error.
-            def host = sh(
+            def albHost = sh(
               script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'",
               returnStdout: true
             ).trim()
-            sh "curl -fsS --max-time 10 http://${host}/ready"
+            // The Ingress rule is host-scoped (values-*.yaml's ingress.host) — the
+            // ALB's own raw AWS-generated hostname above is just the network
+            // address, and curling it directly sends THAT as the Host header,
+            // which doesn't match the rule, so the ALB's default action returns a
+            // real 404 (not a network error). Fetch the actual configured host and
+            // send it explicitly; no DNS record for it needs to exist yet. Found in
+            // real use, 2026-08-26.
+            def ingressHost = sh(
+              script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.spec.rules[0].host}'",
+              returnStdout: true
+            ).trim()
+            sh "curl -fsS --max-time 10 -H \"Host: ${ingressHost}\" http://${albHost}/ready"
           }
         }
       }

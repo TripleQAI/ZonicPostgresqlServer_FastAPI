@@ -192,31 +192,39 @@ pipeline {
             // Ingress-created ALB's security group needs to allow tooling's CIDR —
             // see deployment plan §12.5 point 7 if this step fails with a timeout
             // rather than a real HTTP error.
-            def albHost = sh(
-              script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'",
-              returnStdout: true
-            ).trim()
-            // The Ingress rule is host-scoped (values-*.yaml's ingress.host) — the
-            // ALB's own raw AWS-generated hostname above is just the network
-            // address, and curling it directly sends THAT as the Host header,
-            // which doesn't match the rule, so the ALB's default action returns a
-            // real 404 (not a network error). Fetch the actual configured host and
-            // send it explicitly; no DNS record for it needs to exist yet. Found in
-            // real use, 2026-08-26.
-            def ingressHost = sh(
-              script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.spec.rules[0].host}'",
-              returnStdout: true
-            ).trim()
-
-            // --atomic gates Deploy on POD readiness, but the ALB controller's
-            // own target-group reconciliation runs on a separate resync loop
-            // that can lag several minutes behind — real observed gap,
-            // 2026-08-26 (build #37): pods were healthy and serving 200s the
-            // whole time, but the target group still held stale IPs from the
-            // previous generation for a few minutes after Deploy finished,
-            // producing curl timeouts/502s with nothing actually wrong.
-            // Retrying absorbs that reconciliation lag instead of racing it.
+            //
+            // --atomic gates Deploy on POD readiness, but the ALB controller's own
+            // target-group reconciliation (and, for a first-ever ALB creation e.g.
+            // after a scheme change, the ALB's DNS hostname landing in the
+            // Ingress's own .status field at all) runs on a separate resync loop
+            // that can lag several minutes behind — real observed gaps,
+            // 2026-08-26/27 (builds #37, #40): pods were healthy and serving 200s
+            // the whole time, but either the target group still held stale IPs
+            // from the previous generation, or .status.loadBalancer.ingress[0]
+            // .hostname was still empty outright, producing curl failures with
+            // nothing actually wrong. Both albHost and ingressHost must be
+            // re-fetched INSIDE the retry loop, not once before it — build #40's
+            // failure ("curl: (6) Could not resolve host: ready", i.e. an empty
+            // albHost baked into the URL) was exactly this: a stale empty value
+            // captured once and reused across every retry attempt.
             retry(10) {
+              def albHost = sh(
+                script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'",
+                returnStdout: true
+              ).trim()
+              // The Ingress rule is host-scoped (values-*.yaml's ingress.host) —
+              // the ALB's own raw AWS-generated hostname above is just the network
+              // address, and curling it directly sends THAT as the Host header,
+              // which doesn't match the rule, so the ALB's default action returns
+              // a real 404 (not a network error). Fetch the actual configured host
+              // and send it explicitly; no DNS record for it needs to exist yet.
+              def ingressHost = sh(
+                script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.spec.rules[0].host}'",
+                returnStdout: true
+              ).trim()
+              if (!albHost) {
+                sh "echo 'ALB hostname not yet assigned to Ingress status — retrying' && sleep 15 && exit 1"
+              }
               sh "curl -fsS --max-time 10 -H \"Host: ${ingressHost}\" http://${albHost}/ready || (sleep 15 && exit 1)"
             }
           }

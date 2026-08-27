@@ -62,6 +62,15 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+            # Kubernetes' default httpGet timeoutSeconds is 1 — far shorter than
+            # /ready's own SELECT 1 can legitimately take against a remote database
+            # (Tiger Cloud, WAN latency + TLS handshake) or a still-warming pool
+            # right after startup (pgfoundation.yaml's tsdb datasource sets
+            # acquire_timeout_seconds: 10). Without this, every fresh pod flapped
+            # through repeated "context deadline exceeded" failures for a minute
+            # or more — confirmed via real event timestamps, 2026-08-27 (build
+            # #41's rolling update), not a real app problem.
+            timeoutSeconds: 8
             failureThreshold: 3
           livenessProbe:
             httpGet:
@@ -69,6 +78,11 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
+            # /health no longer touches the database (see ops.py's docstring), so
+            # this needs far less headroom than readinessProbe — kept explicit
+            # rather than the 1s default purely for margin against a transient
+            # scheduling/GC pause, not because /health is expected to be slow.
+            timeoutSeconds: 3
             failureThreshold: 3
           resources:
             {{- toYaml .Values.container.resources | nindent 12 }}

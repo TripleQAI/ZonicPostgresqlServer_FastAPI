@@ -55,6 +55,10 @@ ingress:
   deregistrationDelaySeconds: 300
   host: ""   # set per-environment; no automatic DNS yet (ALB controller module's
              # own README flags this — either a manual Route 53 record or ExternalDNS)
+  certificateArn: ""    # set per-environment when scheme is internet-facing (unused for internal)
+  loadBalancerName: ""  # set per-environment when scheme is internet-facing — a fixed name lets
+                         # Terraform look the ALB up via a data source for its Route 53 alias,
+                         # since this ALB is controller-managed, not a Terraform resource
 
 podDisruptionBudget:
   minAvailable: 1

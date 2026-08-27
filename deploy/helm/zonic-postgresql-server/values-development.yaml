@@ -25,7 +25,7 @@ ingress:
   # source needs the ALB to exist first).
   scheme: internet-facing
   host: "pgfoundation.dev.tripleq.ai"
-  certificateArn: "REPLACE_ME — new ACM cert ARN from infra repo's `terraform apply -target=module.acm` output (acm_certificate_arn), pending as of this commit"
+  certificateArn: "arn:aws:acm:us-east-1:001634074733:certificate/1f9da6b8-35d9-4c5e-a1c3-e17480da20be"
   loadBalancerName: "zonic-postgresql-server-pub"
 
 networkPolicy:

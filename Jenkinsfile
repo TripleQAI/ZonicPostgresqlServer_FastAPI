@@ -151,12 +151,26 @@ pipeline {
             // old targets were still Target.DeregistrationInProgress and new
             // ones not yet registered healthy — intermittent 502s with
             // nothing actually wrong.
+            // --timeout 8m (was 5m) — root-caused 2026-08-27: the
+            // secrets-store-csi-driver-provider-aws pods occasionally hit a
+            // transient DNS timeout reaching Secrets Manager ("dial tcp: lookup
+            // secretsmanager.us-east-1.amazonaws.com: i/o timeout"), seen on
+            // BOTH provider pods across both nodes/AZs — not a misconfiguration
+            // (the VPC endpoint was healthy/available, CoreDNS had zero errors
+            // or restarts), genuine transient network flakiness. kubelet's own
+            // FailedMount retry loop already recovers on its own within roughly
+            // 1-3 minutes; the problem was purely that 5m wasn't enough
+            // headroom to absorb that PLUS two sequential pod readiness cycles
+            // (maxUnavailable: 0) without tripping the rollback. This is the
+            // real cause of builds #37/#39/#41/#43's "Pending termination: 1"
+            // failures — see scripts/aws-commands.ps1 in the infra repo for
+            // the full diagnosis (provider/CoreDNS/VPC-endpoint logs).
             sh """
               helm upgrade --install zonic-postgresql-server deploy/helm/zonic-postgresql-server \
                 -f deploy/helm/zonic-postgresql-server/values-development.yaml \
                 --set image.digest=${env.IMAGE_DIGEST} \
                 --namespace ${K8S_NAMESPACE} --create-namespace \
-                --atomic --timeout 5m
+                --atomic --timeout 8m
             """
           }
         }

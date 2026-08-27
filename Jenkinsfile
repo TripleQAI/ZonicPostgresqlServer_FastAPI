@@ -207,7 +207,18 @@ pipeline {
               script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.spec.rules[0].host}'",
               returnStdout: true
             ).trim()
-            sh "curl -fsS --max-time 10 -H \"Host: ${ingressHost}\" http://${albHost}/ready"
+
+            // --atomic gates Deploy on POD readiness, but the ALB controller's
+            // own target-group reconciliation runs on a separate resync loop
+            // that can lag several minutes behind — real observed gap,
+            // 2026-08-26 (build #37): pods were healthy and serving 200s the
+            // whole time, but the target group still held stale IPs from the
+            // previous generation for a few minutes after Deploy finished,
+            // producing curl timeouts/502s with nothing actually wrong.
+            // Retrying absorbs that reconciliation lag instead of racing it.
+            retry(10) {
+              sh "curl -fsS --max-time 10 -H \"Host: ${ingressHost}\" http://${albHost}/ready || (sleep 15 && exit 1)"
+            }
           }
         }
       }

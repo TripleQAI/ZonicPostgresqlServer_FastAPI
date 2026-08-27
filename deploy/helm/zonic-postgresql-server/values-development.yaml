@@ -16,14 +16,16 @@ ingress:
   # Internet-facing as of 2026-08-27 — explicit, deliberate exception for ad-hoc
   # Postman testing against real data, requested and confirmed with auth left off
   # (see ingress.yaml template's comment and config/profiles/development.yaml).
-  # api.dev.tripleq.ai's ACM cert + Route 53 zone already existed (infra repo's
-  # environments/development/network/main.tf's module.acm / module.route53),
-  # provisioned ahead of time for exactly this. The Route 53 alias record itself
-  # is added in the infra repo AFTER this Ingress creates the real ALB (a data
-  # source needs the ALB to exist first) — see infra repo's scripts/aws-commands.ps1.
+  # pgfoundation.dev.tripleq.ai's ACM cert + Route 53 zone (infra repo's
+  # environments/development/network/main.tf's module.acm / module.route53) were
+  # provisioned ahead of time for exactly this (renamed from the original
+  # api.dev.tripleq.ai on 2026-08-27, before the domain was ever used live — see
+  # infra repo's scripts/aws-commands.ps1). The Route 53 alias record itself is
+  # added in the infra repo AFTER this Ingress creates the real ALB (a data
+  # source needs the ALB to exist first).
   scheme: internet-facing
-  host: "api.dev.tripleq.ai"
-  certificateArn: "arn:aws:acm:us-east-1:001634074733:certificate/db3b068b-457b-49ed-af0d-41de73c69790"
+  host: "pgfoundation.dev.tripleq.ai"
+  certificateArn: "REPLACE_ME — new ACM cert ARN from infra repo's `terraform apply -target=module.acm` output (acm_certificate_arn), pending as of this commit"
   loadBalancerName: "zonic-postgresql-server-pub"
 
 networkPolicy:

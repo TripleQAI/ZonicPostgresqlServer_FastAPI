@@ -1,7 +1,12 @@
 {{- if .Values.ingress.enabled }}
-# scheme: internal is the whole point — nothing about this API belongs on the
-# public internet (deployment plan §12.2 / app repo's own §15.3 reasoning: raw
-# data access, caller-level not end-user-level authorization).
+# scheme: internal was the original design point — nothing about this API's raw,
+# caller-level (not end-user-level) data access was meant to sit on the public
+# internet (deployment plan §12.2 / app repo's own §15.3 reasoning). development's
+# scheme is internet-facing as of 2026-08-27, an explicit, deliberate exception for
+# ad-hoc Postman testing against real data — WITHOUT auth (auth.enabled stays false;
+# see config/profiles/development.yaml). Token auth is planned but not yet wired up
+# (build_auth_gate is never passed api_keys — see security/gate.py). Do not copy
+# this scheme value to values-production.yaml without auth actually enabled first.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -20,6 +25,14 @@ metadata:
     # before it's safe behind this ALB — deployment plan §12.7 P-CD5, not done yet.
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds={{ .Values.ingress.idleTimeoutSeconds }}
     alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds={{ .Values.ingress.deregistrationDelaySeconds }}
+    {{- if .Values.ingress.loadBalancerName }}
+    alb.ingress.kubernetes.io/load-balancer-name: {{ .Values.ingress.loadBalancerName }}
+    {{- end }}
+    {{- if .Values.ingress.certificateArn }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.ingress.certificateArn }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    {{- end }}
 spec:
   rules:
     - host: {{ .Values.ingress.host | quote }}

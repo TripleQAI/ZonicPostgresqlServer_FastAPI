@@ -13,11 +13,18 @@ secret:
   dsnSecretName: tripleq/development/tiger-cloud-database-url
 
 ingress:
-  # No Route 53 record exists yet for this — ALB controller module's own README
-  # flags DNS as out of its scope. Until one exists, resolve via the ALB's own
-  # AWS-generated internal DNS name (`kubectl get ingress -n zonic-postgresql-server`)
-  # rather than a stable hostname.
-  host: "internal-pgfoundation.dev.tripleq.ai"
+  # Internet-facing as of 2026-08-27 — explicit, deliberate exception for ad-hoc
+  # Postman testing against real data, requested and confirmed with auth left off
+  # (see ingress.yaml template's comment and config/profiles/development.yaml).
+  # api.dev.tripleq.ai's ACM cert + Route 53 zone already existed (infra repo's
+  # environments/development/network/main.tf's module.acm / module.route53),
+  # provisioned ahead of time for exactly this. The Route 53 alias record itself
+  # is added in the infra repo AFTER this Ingress creates the real ALB (a data
+  # source needs the ALB to exist first) — see infra repo's scripts/aws-commands.ps1.
+  scheme: internet-facing
+  host: "api.dev.tripleq.ai"
+  certificateArn: "arn:aws:acm:us-east-1:001634074733:certificate/db3b068b-457b-49ed-af0d-41de73c69790"
+  loadBalancerName: "zonic-postgresql-server-pub"
 
 networkPolicy:
   vpcCidr: "10.20.0.0/16"

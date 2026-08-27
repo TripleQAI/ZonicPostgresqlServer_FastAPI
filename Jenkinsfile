@@ -136,20 +136,23 @@ pipeline {
             "AWS_SESSION_TOKEN=${creds[2]}",
           ]) {
             sh "aws eks update-kubeconfig --name ${DEV_EKS_CLUSTER} --region ${AWS_REGION}"
-            // --atomic TEMPORARILY REMOVED, 2026-08-26: it auto-rolls back and
-            // deletes the release on failure, which was destroying the failed
-            // pod's logs/status before they could be inspected during initial
-            // deploy debugging — every failure needed a live 5-minute race to
-            // catch anything. Restore --atomic once the app reaches Ready.
-            // Normally: auto-rolls back the release if it doesn't reach ready
+            // --atomic: auto-rolls back the release if it doesn't reach ready
             // within --timeout — the Kubernetes-native equivalent of ECS's
-            // deployment circuit breaker (deployment plan §12.2).
+            // deployment circuit breaker (deployment plan §12.2). Restored
+            // 2026-08-26 after confirming the app reaches Ready (was
+            // temporarily removed to preserve failed-pod state for initial
+            // deploy debugging — see git history). Also fixes a race this
+            // exposed: without --atomic, Deploy returns in ~4s without
+            // waiting for the rollout, so Smoke test could hit the ALB while
+            // old targets were still Target.DeregistrationInProgress and new
+            // ones not yet registered healthy — intermittent 502s with
+            // nothing actually wrong.
             sh """
               helm upgrade --install zonic-postgresql-server deploy/helm/zonic-postgresql-server \
                 -f deploy/helm/zonic-postgresql-server/values-development.yaml \
                 --set image.digest=${env.IMAGE_DIGEST} \
                 --namespace ${K8S_NAMESPACE} --create-namespace \
-                --timeout 5m
+                --atomic --timeout 5m
             """
           }
         }

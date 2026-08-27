@@ -19,6 +19,10 @@ pipeline {
     DEV_DEPLOY_ROLE_ARN  = 'arn:aws:iam::001634074733:role/ZonicEksDeployRole'
     DEV_EKS_CLUSTER      = 'tripleq-development'
     K8S_NAMESPACE        = 'zonic-postgresql-server'
+    // Matches values-development.yaml's ingress.host — kept as a literal here
+    // rather than read from the chart, same as this block's other environment-
+    // specific constants (DEV_EKS_CLUSTER etc.).
+    PUBLIC_API_HOST      = 'pgfoundation.dev.tripleq.ai'
   }
 
   stages {
@@ -162,72 +166,26 @@ pipeline {
     stage('Smoke test') {
       when { branch 'main' }
       steps {
-        script {
-          // The Deploy stage's assumed-role credentials are scoped to its own
-          // withEnv block and don't carry over — kubectl's exec-based auth plugin
-          // (aws eks get-token) needs valid credentials active in THIS stage too,
-          // or it silently falls back to Jenkins' own instance role, which has no
-          // EKS access entry on this cluster: "You must be logged in to the
-          // server (Unauthorized)". Found in real use, 2026-08-26.
-          def creds = sh(
-            script: """
-              aws sts assume-role \
-                --role-arn ${DEV_DEPLOY_ROLE_ARN} \
-                --role-session-name jenkins-smoke-test-development \
-                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
-                --output text
-            """,
-            returnStdout: true
-          ).trim().split()
-
-          withEnv([
-            "AWS_ACCESS_KEY_ID=${creds[0]}",
-            "AWS_SECRET_ACCESS_KEY=${creds[1]}",
-            "AWS_SESSION_TOKEN=${creds[2]}",
-          ]) {
-            sh "aws eks update-kubeconfig --name ${DEV_EKS_CLUSTER} --region ${AWS_REGION}"
-
-            // Internal ALB — only reachable from inside the VPC. Jenkins reaches it
-            // via the Transit Gateway (bootstrap/IMPORT.md Steps 9-10); the
-            // Ingress-created ALB's security group needs to allow tooling's CIDR —
-            // see deployment plan §12.5 point 7 if this step fails with a timeout
-            // rather than a real HTTP error.
-            //
-            // --atomic gates Deploy on POD readiness, but the ALB controller's own
-            // target-group reconciliation (and, for a first-ever ALB creation e.g.
-            // after a scheme change, the ALB's DNS hostname landing in the
-            // Ingress's own .status field at all) runs on a separate resync loop
-            // that can lag several minutes behind — real observed gaps,
-            // 2026-08-26/27 (builds #37, #40): pods were healthy and serving 200s
-            // the whole time, but either the target group still held stale IPs
-            // from the previous generation, or .status.loadBalancer.ingress[0]
-            // .hostname was still empty outright, producing curl failures with
-            // nothing actually wrong. Both albHost and ingressHost must be
-            // re-fetched INSIDE the retry loop, not once before it — build #40's
-            // failure ("curl: (6) Could not resolve host: ready", i.e. an empty
-            // albHost baked into the URL) was exactly this: a stale empty value
-            // captured once and reused across every retry attempt.
-            retry(10) {
-              def albHost = sh(
-                script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'",
-                returnStdout: true
-              ).trim()
-              // The Ingress rule is host-scoped (values-*.yaml's ingress.host) —
-              // the ALB's own raw AWS-generated hostname above is just the network
-              // address, and curling it directly sends THAT as the Host header,
-              // which doesn't match the rule, so the ALB's default action returns
-              // a real 404 (not a network error). Fetch the actual configured host
-              // and send it explicitly; no DNS record for it needs to exist yet.
-              def ingressHost = sh(
-                script: "kubectl get ingress zonic-postgresql-server -n ${K8S_NAMESPACE} -o jsonpath='{.spec.rules[0].host}'",
-                returnStdout: true
-              ).trim()
-              if (!albHost) {
-                sh "echo 'ALB hostname not yet assigned to Ingress status — retrying' && sleep 15 && exit 1"
-              }
-              sh "curl -fsS --max-time 10 -H \"Host: ${ingressHost}\" http://${albHost}/ready || (sleep 15 && exit 1)"
-            }
-          }
+        // Simplified 2026-08-27 once development's Ingress got a real public
+        // hostname (pgfoundation.dev.tripleq.ai, internet-facing ALB with a
+        // publicly-trusted ACM cert). No more kubectl/assume-role dance to look
+        // up the ALB's raw hostname, no Host-header override, no HTTP-then-
+        // redirect hop: curl the real hostname over HTTPS directly, exactly how
+        // a real caller would reach it. This also sidesteps a real bug found in
+        // the old approach — Jenkins' security group only had port-80 egress
+        // scoped to the OLD internal ALB's private VPC CIDR, which doesn't cover
+        // this ALB's public IPs at all; HTTPS reuses the already-broad
+        // `443 -> 0.0.0.0/0` egress rule Jenkins already had, so no SG change
+        // was needed.
+        //
+        // Still retried, not one-shot: the AWS Load Balancer Controller's target-
+        // group reconciliation runs on its own resync loop that can lag a couple
+        // minutes behind pod readiness — real observed gap, 2026-08-26/27
+        // (builds #37, #40): pods were healthy and serving 200s the whole time,
+        // but the target group briefly held stale/draining targets right after a
+        // deploy, producing curl failures with nothing actually wrong.
+        retry(10) {
+          sh "curl -fsS --max-time 10 https://${PUBLIC_API_HOST}/ready || (sleep 15 && exit 1)"
         }
       }
     }

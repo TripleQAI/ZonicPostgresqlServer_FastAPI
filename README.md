@@ -1,6 +1,5 @@
 # ZonicPostgresqlServer_FastAPI
 
-
 A rebuild of the PostgreSQL Database Foundation Server (`pgfoundation`) on
 **FastAPI**, ported from
 [`ZonicPostgresqlServer_DjangoApp`](../ZonicPostgresqlServer_DjangoApp).

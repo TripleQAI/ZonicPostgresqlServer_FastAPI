@@ -6,7 +6,7 @@ docs. See [08 — API Surface](./08-api-surface.md) for the narrative version of
 this table and the contracts that back it.
 
 ```bash
-export BASE_URL=http://localhost:8600   # settings.api.host/port — default 127.0.0.1:8600
+export BASE_URL=https://pgfoundation.dev.tripleq.ai
 export TOKEN=my-shared-secret            # only needed when auth.enabled=true and provider=token
 ```
 

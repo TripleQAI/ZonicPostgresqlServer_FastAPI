@@ -5,8 +5,23 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://pgfoundation.dev.tripleq.ai", "type": "string" },
-    { "key": "token", "value": "my-shared-secret", "type": "string", "description": "Only needed when auth.enabled=true and provider=token" }
+    {
+      "key": "baseUrl",
+      "value": "https://pgfoundation.dev.tripleq.ai",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "my-shared-secret",
+      "type": "string",
+      "description": "Only needed when auth.enabled=true and provider=token"
+    },
+    {
+      "key": "datasource",
+      "value": "tsdb",
+      "type": "string",
+      "description": "Only real data source configured on this deployment. Discover with GET /v1/datasources."
+    }
   ],
   "item": [
     {
@@ -16,7 +31,15 @@
           "name": "Liveness — GET /health",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
             "description": "200 while the process is up. Does NOT touch the database."
           }
         },
@@ -24,7 +47,15 @@
           "name": "Readiness — GET /ready",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/ready", "host": ["{{baseUrl}}"], "path": ["ready"] },
+            "url": {
+              "raw": "{{baseUrl}}/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            },
             "description": "Runs SELECT 1 per datasource. Returns 503 when every source is down."
           }
         },
@@ -32,7 +63,15 @@
           "name": "Prometheus scrape — GET /metrics",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/metrics", "host": ["{{baseUrl}}"], "path": ["metrics"] },
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            },
             "description": "Empty body until an exporter is bound."
           }
         }
@@ -45,36 +84,85 @@
           "name": "List data sources — GET /v1/datasources",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{baseUrl}}/v1/datasources", "host": ["{{baseUrl}}"], "path": ["v1", "datasources"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/datasources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources"
+              ]
+            }
           }
         },
         {
           "name": "v1 health alias — GET /v1/health",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/health", "host": ["{{baseUrl}}"], "path": ["v1", "health"] }
+            "url": {
+              "raw": "{{baseUrl}}/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            }
           }
         },
         {
           "name": "v1 ready alias — GET /v1/ready",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/ready", "host": ["{{baseUrl}}"], "path": ["v1", "ready"] }
+            "url": {
+              "raw": "{{baseUrl}}/v1/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "ready"
+              ]
+            }
           }
         },
         {
           "name": "OpenAPI document — GET /v1/openapi.json",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/openapi.json", "host": ["{{baseUrl}}"], "path": ["v1", "openapi.json"] }
+            "url": {
+              "raw": "{{baseUrl}}/v1/openapi.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "openapi.json"
+              ]
+            }
           }
         },
         {
           "name": "Swagger UI — GET /docs",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/docs", "host": ["{{baseUrl}}"], "path": ["docs"] },
+            "url": {
+              "raw": "{{baseUrl}}/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "docs"
+              ]
+            },
             "description": "docs_url is config-gated; off in prod."
           }
         },
@@ -82,7 +170,15 @@
           "name": "ReDoc — GET /redoc",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/redoc", "host": ["{{baseUrl}}"], "path": ["redoc"] }
+            "url": {
+              "raw": "{{baseUrl}}/redoc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "redoc"
+              ]
+            }
           }
         }
       ]
@@ -95,20 +191,37 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/view",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "view"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/view",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "view"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"name\": \"v_paid_orders\",\n  \"schema\": \"public\",\n  \"columns\": [\"id\", \"customer\", \"amount\"],\n  \"filters\": [\n    {\"column\": \"customer\", \"op\": \"eq\", \"value\": \"bob\"},\n    {\"column\": \"amount\", \"op\": \"gt\", \"value\": 10}\n  ],\n  \"order_by\": [{\"column\": \"id\", \"descending\": false}],\n  \"limit\": 50,\n  \"offset\": 0\n}"
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"name\": \"agentBuilder_agentworkflow\",\n  \"schema\": \"agent_builder\",\n  \"limit\": 10\n}"
             },
-            "description": "Valid filters[].op values: eq ne lt le gt ge in not_in like ilike between is_null is_not_null"
+            "description": "Confirmed working against pgfoundation.dev.tripleq.ai (datasource=tsdb, table agent_builder.agentBuilder_agentworkflow). Valid filters[].op values: eq ne lt le gt ge in not_in like ilike between is_null is_not_null"
           }
         },
         {
@@ -116,18 +229,39 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" },
-              { "key": "accept", "value": "application/x-ndjson" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              },
+              {
+                "key": "accept",
+                "value": "application/x-ndjson"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/analytics/view/stream",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "analytics", "view", "stream"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/view/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "view",
+                "stream"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"name\": \"readings\",\n  \"filters\": [{\"column\": \"day\", \"op\": \"eq\", \"value\": \"2026-08-13\"}],\n  \"row_format\": \"tuple\"\n}"
             },
             "description": "NDJSON by default, or SSE with Accept: text/event-stream. Use instead of /view whenever the result may exceed api.max_response_rows."
@@ -138,17 +272,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/analytics/function",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "analytics", "function"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/function",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "function"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"name\": \"fn_daily_totals\",\n  \"args\": {\"day\": \"2026-08-13\"}\n}"
             }
           }
@@ -157,15 +308,31 @@
           "name": "Function, positional args + scalar — POST /v1/datasources/{name}/function",
           "request": {
             "method": "POST",
-            "header": [{ "key": "content-type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/function",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "function"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/function",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "function"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\"name\": \"fn_customer_balance\", \"args\": [\"bob\"], \"scalar\": true}"
             }
           }
@@ -175,17 +342,35 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "accept", "value": "application/x-ndjson" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "accept",
+                "value": "application/x-ndjson"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/analytics/function/stream",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "analytics", "function", "stream"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/function/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "function",
+                "stream"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\"name\": \"fn_export_rows\", \"args\": {\"day\": \"2026-08-13\"}}"
             }
           }
@@ -195,17 +380,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/procedure",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "procedure"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/procedure",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "procedure"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\"name\": \"sp_debit\", \"args\": [\"acct-1\", 100]}"
             },
             "description": "args is positional; pass null for OUT/INOUT placeholders. Outputs come back as a row in the response envelope."
@@ -216,17 +418,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/analytics/interval",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "analytics", "interval"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/interval",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "interval"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"source\": \"readings\",\n  \"time_column\": \"ts\",\n  \"start\": \"2026-08-13T00:00:00Z\",\n  \"end\": \"2026-08-14T00:00:00Z\",\n  \"every\": \"15 minutes\",\n  \"metrics\": [{\"column\": \"value\", \"func\": \"avg\", \"alias\": \"avg_value\"}],\n  \"group_by\": [\"sensor_id\"],\n  \"tz\": \"UTC\"\n}"
             },
             "description": "Half-open [start, end) range. metrics[].func is whitelisted by the core compiler."
@@ -237,18 +456,39 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" },
-              { "key": "accept", "value": "application/x-ndjson" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              },
+              {
+                "key": "accept",
+                "value": "application/x-ndjson"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/analytics/interval/stream",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "analytics", "interval", "stream"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/interval/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "interval",
+                "stream"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"source\": \"readings\",\n  \"time_column\": \"ts\",\n  \"start\": \"2026-08-13T00:00:00Z\",\n  \"end\": \"2026-08-14T00:00:00Z\",\n  \"every\": \"15 minutes\",\n  \"metrics\": [{\"column\": \"value\", \"func\": \"avg\", \"alias\": \"avg_value\"}]\n}"
             }
           }
@@ -258,17 +498,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/fetch-since",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "fetch-since"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/fetch-since",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "fetch-since"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"sql\": \"SELECT id, ts, payload FROM events\",\n  \"params\": {},\n  \"cursor\": {\"order_by\": [\"ts\", \"id\"], \"after\": null},\n  \"limit\": 1000\n}"
             },
             "description": "Never OFFSET — feed the response's next_watermark back in as `cursor` on the next call to resume exactly where you left off."
@@ -278,15 +535,31 @@
           "name": "Fetch-since, next page (resumed) — POST /v1/datasources/{name}/fetch-since",
           "request": {
             "method": "POST",
-            "header": [{ "key": "content-type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/fetch-since",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "fetch-since"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/fetch-since",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "fetch-since"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"sql\": \"SELECT id, ts, payload FROM events\",\n  \"cursor\": {\"order_by\": [\"ts\", \"id\"], \"after\": [\"2026-08-13T00:14:59Z\", 40213]},\n  \"limit\": 1000\n}"
             }
           }
@@ -296,17 +569,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/execute-many",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "execute-many"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/execute-many",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "execute-many"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"sql\": \"INSERT INTO events (id, payload) VALUES (%(id)s, %(payload)s)\",\n  \"params_seq\": [\n    {\"id\": 1, \"payload\": \"a\"},\n    {\"id\": 2, \"payload\": \"b\"}\n  ]\n}"
             }
           }
@@ -316,17 +606,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/copy",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "copy"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/copy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "copy"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"table\": \"events_staging\",\n  \"rows\": [[1, \"2026-08-13T00:00:00Z\", \"a\"], [2, \"2026-08-13T00:01:00Z\", \"b\"]]\n}"
             }
           }
@@ -341,20 +648,37 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/query",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "query"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/query",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "query"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"sql\": \"SELECT id, customer, amount FROM orders WHERE customer = %(customer)s\",\n  \"params\": {\"customer\": \"bob\"}\n}"
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"sql\": \"SELECT * FROM agent_builder.\\\"agentBuilder_agentworkflow\\\" LIMIT 10;\"\n}"
             },
-            "description": "Requires api.enable_raw_sql=true. When disabled this route 404s and does not appear in /v1/openapi.json."
+            "description": "Requires api.enable_raw_sql=true. When disabled this route 404s (confirmed 404 on pgfoundation.dev.tripleq.ai) and does not appear in /v1/openapi.json. Note: a double-quoted Postgres identifier inside the sql string must have its quotes escaped as \\\" in JSON, or the body itself becomes invalid JSON."
           }
         },
         {
@@ -362,19 +686,40 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" },
-              { "key": "accept", "value": "application/x-ndjson" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              },
+              {
+                "key": "accept",
+                "value": "application/x-ndjson"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/query/stream",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "query", "stream"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/query/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "query",
+                "stream"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"sql\": \"SELECT id, customer, amount FROM orders WHERE customer = %(customer)s\",\n  \"params\": {\"customer\": \"bob\"}\n}"
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"sql\": \"SELECT * FROM agent_builder.\\\"agentBuilder_agentworkflow\\\" LIMIT 10;\"\n}"
             }
           }
         },
@@ -383,17 +728,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/execute",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "execute"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "execute"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"sql\": \"UPDATE orders SET status = %(status)s WHERE id = %(id)s\",\n  \"params\": {\"status\": \"paid\", \"id\": 3}\n}"
             }
           }
@@ -408,13 +770,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{baseUrl}}/v1/batch", "host": ["{{baseUrl}}"], "path": ["v1", "batch"] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "batch"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"mode\": \"parallel\",\n  \"max_concurrency\": 8,\n  \"fail_fast\": false,\n  \"items\": [\n    {\"id\": \"orders\", \"datasource\": \"main\", \"op\": \"view\",\n     \"payload\": {\"name\": \"v_paid_orders\"}},\n    {\"id\": \"daily\", \"datasource\": \"analytics\", \"op\": \"function\",\n     \"payload\": {\"name\": \"fn_daily_totals\", \"args\": {\"day\": \"2026-08-13\"}}}\n  ]\n}"
             },
             "description": "HTTP stays 200 on partial failure — each item carries its own status."
@@ -424,11 +805,29 @@
           "name": "Sequential — one pinned connection, pipelined",
           "request": {
             "method": "POST",
-            "header": [{ "key": "content-type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/v1/batch", "host": ["{{baseUrl}}"], "path": ["v1", "batch"] },
+            "header": [
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "batch"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"mode\": \"sequential\",\n  \"items\": [\n    {\"id\": \"1\", \"datasource\": \"main\", \"op\": \"view\", \"payload\": {\"name\": \"v_paid_orders\", \"limit\": 1}},\n    {\"id\": \"2\", \"datasource\": \"main\", \"op\": \"view\", \"payload\": {\"name\": \"v_paid_orders\", \"limit\": 2}}\n  ]\n}"
             }
           }
@@ -438,13 +837,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "content-type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{baseUrl}}/v1/batch", "host": ["{{baseUrl}}"], "path": ["v1", "batch"] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "batch"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\n  \"mode\": \"transactional\",\n  \"items\": [\n    {\"id\": \"1\", \"datasource\": \"main\", \"op\": \"procedure\",\n     \"payload\": {\"name\": \"sp_debit\", \"args\": [\"acct-1\", 100]}},\n    {\"id\": \"2\", \"datasource\": \"main\", \"op\": \"procedure\",\n     \"payload\": {\"name\": \"sp_credit\", \"args\": [\"acct-2\", 100]}}\n  ]\n}"
             },
             "description": "Retried whole on serialization failure (40001/40P01) — items must have no non-database side effects."
@@ -460,13 +878,27 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "accept", "value": "text/event-stream" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "accept",
+                "value": "text/event-stream"
+              }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/datasources/main/subscribe/orders_changed",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "main", "subscribe", "orders_changed"]
+              "raw": "{{baseUrl}}/v1/datasources/{{datasource}}/subscribe/orders_changed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "{{datasource}}",
+                "subscribe",
+                "orders_changed"
+              ]
             },
             "description": "LISTEN/NOTIFY over SSE. Unbounded lifetime — pins a connection for as long as the client stays connected."
           }
@@ -480,18 +912,34 @@
           "name": "Unknown data source — POST /v1/datasources/bogus/view",
           "request": {
             "method": "POST",
-            "header": [{ "key": "content-type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/v1/datasources/bogus/view",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1", "datasources", "bogus", "view"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "datasources",
+                "bogus",
+                "view"
+              ]
             },
             "body": {
               "mode": "raw",
-              "options": { "raw": { "language": "json" } },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
               "raw": "{\"name\": \"anything\"}"
             },
-            "description": "Expect 404 {\"error\":\"unknown data source 'bogus'\",\"type\":\"ConfigError\",\"request_id\":\"...\"}"
+            "description": "Expect 404 {\"error\":\"unknown data source 'bogus'; known: ['...']\",\"type\":\"ConfigError\",\"request_id\":\"...\"}. On pgfoundation.dev.tripleq.ai the known list is ['tsdb'] — confirmed live."
           }
         }
       ]

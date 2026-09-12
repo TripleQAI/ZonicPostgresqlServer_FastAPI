@@ -15,6 +15,13 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: {{ .Values.ingress.scheme }}
+    {{- if .Values.ingress.wafAclArn }}
+    # The AWS Load Balancer Controller owns this ALB, so it must also own the
+    # WAF association -- a Terraform aws_wafv2_web_acl_association for the same
+    # ALB would fight this annotation, each apply reverting the other. The infra
+    # repo creates the ACL and outputs its ARN; this associates it.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: {{ .Values.ingress.wafAclArn }}
+    {{- end }}
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/healthcheck-path: {{ .Values.ingress.healthCheckPath }}
     alb.ingress.kubernetes.io/healthcheck-port: traffic-port

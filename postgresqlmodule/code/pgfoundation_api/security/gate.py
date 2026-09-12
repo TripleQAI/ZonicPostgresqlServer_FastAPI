@@ -97,7 +97,18 @@ def build_auth_gate(
     if settings.provider == "mtls":
         authenticator = MeshIdentityAuthenticator(settings.mtls)
     elif settings.provider == "token":
-        authenticator = SharedSecretAuthenticator(settings.token, api_keys or {})
+        # Defence in depth against the same mistake load_api_keys guards at the
+        # composition root: an empty key map authenticates nobody, so every
+        # request 401s and the cause looks like a broken credential rather than
+        # a missing one. Checked here too because this is a public function --
+        # a future caller could construct a gate without going through
+        # bootstrap.providers.
+        if not api_keys:
+            raise RuntimeError(
+                "auth.enabled=true with provider 'token' but no api_keys were "
+                "supplied; every caller would be rejected -- refusing to start"
+            )
+        authenticator = SharedSecretAuthenticator(settings.token, api_keys)
     else:
         raise RuntimeError(
             f"auth.enabled=true with unknown provider {settings.provider!r}; "

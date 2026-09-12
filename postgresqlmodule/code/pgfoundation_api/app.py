@@ -19,7 +19,7 @@ from . import ops
 from .api import versions
 from .batch.limits import AdmissionLimiter
 from .bootstrap.lifespan import lifespan
-from .bootstrap.providers import build_metrics
+from .bootstrap.providers import build_metrics, load_api_keys
 from .errors import register_exception_handlers
 from .middleware.correlation import CorrelationMiddleware
 from .middleware.timing import TimingMiddleware
@@ -68,7 +68,16 @@ def create_app(
     # observability provider. Default is a Null Object, so nothing is paid for
     # until a deployment turns it on.
     app.state.metrics = build_metrics(settings.observability)
-    app.state.auth_gate = build_auth_gate(settings.auth, metrics=app.state.metrics)
+    # api_keys comes from the secret store, not settings: doc 05's rule is that
+    # the config file names WHO may call and the secret store holds WHAT PROVES
+    # IT. Omitting this argument -- as this line did until 2026-09-12 -- builds
+    # a token authenticator with an empty key map, so auth.enabled=true rejects
+    # every caller with no indication that the keys were simply never loaded.
+    app.state.auth_gate = build_auth_gate(
+        settings.auth,
+        api_keys=load_api_keys(settings.auth),
+        metrics=app.state.metrics,
+    )
     # Admission control: bounds in-flight DB work so overload sheds fast
     # instead of collapsing into pool timeouts (doc 06 §6.6).
     app.state.limiter = AdmissionLimiter(settings.concurrency, app.state.metrics)

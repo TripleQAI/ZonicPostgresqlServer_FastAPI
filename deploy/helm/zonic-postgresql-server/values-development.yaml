@@ -6,11 +6,23 @@ image:
 
 env:
   PGF_PROFILE: development
-  # config/profiles/development.yaml — auth deliberately off until a real caller
-  # exists (see that file's own comment, and deployment plan §12.9 decision 1).
+  # config/profiles/development.yaml — auth is ON as of 2026-09-12; the
+  # Authorization Server is the real caller doc 14 §14.5 was waiting for.
 
 secret:
   dsnSecretName: tripleq/development/tiger-cloud-database-url
+
+  # Must match auth.policy.callers in config/profiles/development.yaml. The
+  # service refuses to start on a policy subject with no key here, so the two
+  # lists are checked against each other at startup rather than drifting.
+  #
+  # The container is created by the infra repo (environments/development/network's
+  # module.secrets_manager); the VALUE is generated separately by that repo's
+  # scripts/rotate-pgfoundation-caller-key.ps1, so no key is ever in Terraform
+  # state or in this file.
+  callerKeys:
+    - subject: zonic-authorization-server
+      secretName: pgfoundation/callers/zonic-authorization-server
 
 ingress:
   # Internet-facing as of 2026-08-27 — explicit, deliberate exception for ad-hoc
@@ -24,6 +36,16 @@ ingress:
   # added in the infra repo AFTER this Ingress creates the real ALB (a data
   # source needs the ALB to exist first).
   scheme: internet-facing
+  # WAF: AWSManagedRulesCommonRuleSet + KnownBadInputs + a per-IP rate limit,
+  # with the authorization and cookie headers redacted from WAF logs so a
+  # caller's API key never lands in CloudWatch.
+  #
+  # Fill from the infra repo, AFTER applying environments/development/network:
+  #   terraform output -raw application_waf_web_acl_arn
+  #
+  # Left empty until then on purpose: a wrong ARN is rejected by the controller
+  # and the Ingress stops reconciling, which is worse than no WAF.
+  wafAclArn: ""
   host: "pgfoundation.dev.tripleq.ai"
   certificateArn: "arn:aws:acm:us-east-1:001634074733:certificate/1f9da6b8-35d9-4c5e-a1c3-e17480da20be"
   loadBalancerName: "zonic-postgresql-server-pub"

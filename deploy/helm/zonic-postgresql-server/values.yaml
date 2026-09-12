@@ -42,6 +42,26 @@ secret:
   region: us-east-1
   envVarName: PGF_TSDB_DSN
 
+  # Caller API keys (ADR-008 caller identity), one Secrets Manager entry each.
+  # A secret per caller, not one blob: rotating one caller's credential must not
+  # require rewriting and re-deploying every other caller's.
+  #
+  # `subject` must match an entry in auth.policy.callers for the active profile.
+  # The service refuses to start on a policy subject with no key, and ignores a
+  # key whose subject no policy names -- so the two lists are checked against
+  # each other at startup rather than drifting silently.
+  #
+  # The env var name is DERIVED from the subject by the app
+  # (bootstrap/providers.py's _env_var_for): zonic-authorization-server ->
+  # PGF_API_KEY_ZONIC_AUTHORIZATION_SERVER. Do not spell it out here; two places
+  # to write one name is one place for them to disagree.
+  #
+  # Empty by default: auth is off in every profile that does not opt in, and a
+  # deployment with auth off must not require secrets that prove nothing.
+  callerKeys: []
+  # - subject: zonic-authorization-server
+  #   secretName: pgfoundation/callers/zonic-authorization-server
+
 serviceAccount:
   name: zonic-postgresql-server
   # No eks.amazonaws.com/role-arn annotation — EKS Pod Identity associates by
@@ -50,6 +70,11 @@ serviceAccount:
 ingress:
   enabled: true
   scheme: internal
+  # WAF web ACL ARN, from the infra repo's application_waf_web_acl_arn output.
+  # Empty means no association -- correct for an internal ALB, which is not
+  # reachable from the internet and so has nothing for a rate limit or a managed
+  # rule group to defend against.
+  wafAclArn: ""
   healthCheckPath: /ready
   idleTimeoutSeconds: 300
   deregistrationDelaySeconds: 300

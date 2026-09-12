@@ -56,6 +56,16 @@ spec:
                 secretKeyRef:
                   name: zonic-postgresql-server-dsn
                   key: {{ .Values.secret.envVarName }}
+            {{- range .Values.secret.callerKeys }}
+            # One env var per caller. secretKeyRef, so the value is injected at
+            # pod start and never written to the pod spec -- a `kubectl get
+            # deployment -o yaml` shows the reference, not the credential.
+            - name: PGF_API_KEY_{{ .subject | upper | replace "-" "_" }}
+              valueFrom:
+                secretKeyRef:
+                  name: zonic-postgresql-server-dsn
+                  key: PGF_API_KEY_{{ .subject | upper | replace "-" "_" }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /ready

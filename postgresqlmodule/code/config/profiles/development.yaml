@@ -3,18 +3,50 @@
 # ("never use for anything reachable from outside") — this one is reachable by other
 # services inside the VPC, so it can't inherit that profile's permissiveness.
 #
-# auth stays disabled here, matching doc 14 §14.5's standing constraint ("do not
-# onboard a second consuming API until the deployment carries real caller identity")
-# — infra deployment plan §12.9 decision 1 is still open (no real caller names
-# confirmed). Flip to `provider: token` + populate `policy.callers` once they are —
-# never `provider: mtls` behind a plain/Ingress-created ALB (§12.8; it trusts a
-# client-supplied header the ALB does not strip).
+# auth is ENABLED as of 2026-09-12, closing doc 14 §14.5's standing constraint
+# ("do not onboard a second consuming API until the deployment carries real caller
+# identity"). The Authorization Server is that second consumer, so the constraint
+# came due. provider: token, never mtls — §12.8: mtls behind a plain,
+# Ingress-created ALB trusts a client-supplied header the ALB does not strip.
 
 auth:
-  enabled: false
+  enabled: true
+
+  # SharedSecretAuthenticator: a per-caller key, compared as a SHA-256 digest in
+  # constant time (security/providers.py). Keys live in Secrets Manager, one per
+  # caller, and reach the process as PGF_API_KEY_<SUBJECT> env vars — the config
+  # file names WHO may call, the secret store holds WHAT PROVES IT (doc 05).
+  #
+  # The service refuses to start if a subject below has no key, so a deploy fails
+  # loudly rather than serving 401s to a caller whose credential was never synced.
+  provider: token
+
+  policy:
+    # Anything not named below is refused. With enabled: true this is the only
+    # defensible default: an unknown caller is not a partially-trusted caller.
+    default: deny
+
+    callers:
+      # The Authorization Server reads user_schema.users, user_credentials and
+      # oauth_clients, and writes through record_credential_failure /
+      # record_credential_success. Those are /function and /procedure calls,
+      # which the authorizer classes as `write` — so `read` alone would break
+      # account lockout while leaving login working, a confusing partial failure.
+      #
+      # zonic-bff is deliberately absent: its only outbound HTTP client is
+      # AuthorizationServerClient (zonic_bff/client/authorization_server.py). It
+      # never calls pgfoundation, so a key for it would be a credential with no
+      # purpose.
+      - subject: zonic-authorization-server
+        datasources: [tsdb]
+        actions: [read, write]
 
 api:
-  docs_enabled: true        # internal-only ALB; useful for other engineers testing against it
+  # Off now that auth is on. /docs on an authenticated service is not a
+  # vulnerability, but it is a free map of the surface for anyone probing the
+  # endpoint, and the OpenAPI snapshot in this repo serves the same purpose for
+  # engineers who need it.
+  docs_enabled: false
   enable_raw_sql: false     # never ships past local dev, regardless of auth state
 
 observability:

@@ -42,9 +42,17 @@ secret:
   region: us-east-1
   envVarName: PGF_TSDB_DSN
 
-  # Caller API keys (ADR-008 caller identity), one Secrets Manager entry each.
-  # A secret per caller, not one blob: rotating one caller's credential must not
-  # require rewriting and re-deploying every other caller's.
+  # Caller API keys (ADR-008 caller identity). ONE Secrets Manager secret whose
+  # value is a JSON object keyed by caller subject:
+  #
+  #   {"zonic-authorization-server": "<key>", "other-caller": "<key>"}
+  #
+  # One secret, not one per caller, because each CSI object is a separate
+  # GetSecretValue over a network path that intermittently times out on this
+  # cluster (Jenkinsfile deploy-stage comment; builds #37/#39/#41/#43). With
+  # maxUnavailable: 0 the pods roll sequentially, so per-caller secrets multiply
+  # that risk by replicas. jmesPath splits the one payload into per-caller keys,
+  # so the app still sees one env var per caller and nothing downstream changes.
   #
   # `subject` must match an entry in auth.policy.callers for the active profile.
   # The service refuses to start on a policy subject with no key, and ignores a
@@ -58,9 +66,11 @@ secret:
   #
   # Empty by default: auth is off in every profile that does not opt in, and a
   # deployment with auth off must not require secrets that prove nothing.
+  callerKeysSecretName: ""
   callerKeys: []
-  # - subject: zonic-authorization-server
-  #   secretName: pgfoundation/callers/zonic-authorization-server
+  # callerKeysSecretName: pgfoundation/caller-keys
+  # callerKeys:
+  #   - subject: zonic-authorization-server
 
 serviceAccount:
   name: zonic-postgresql-server

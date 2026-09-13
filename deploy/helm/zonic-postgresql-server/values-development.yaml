@@ -20,9 +20,9 @@ secret:
   # module.secrets_manager); the VALUE is generated separately by that repo's
   # scripts/rotate-pgfoundation-caller-key.ps1, so no key is ever in Terraform
   # state or in this file.
+  callerKeysSecretName: pgfoundation/caller-keys
   callerKeys:
     - subject: zonic-authorization-server
-      secretName: pgfoundation/callers/zonic-authorization-server
 
 ingress:
   # Internet-facing as of 2026-08-27 — explicit, deliberate exception for ad-hoc

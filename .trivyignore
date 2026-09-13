@@ -36,3 +36,30 @@ CVE-2026-48962
 CVE-2026-57432
 CVE-2026-57433
 CVE-2026-9538
+
+# --- Added 2026-09-12 (build #50, 38 HIGH / 0 CRITICAL) ----------------------
+#
+# Five CVEs across util-linux and systemd, none with a Debian fix: every row in
+# the trivy table had an empty "Fixed Version" column, and the Dockerfile
+# already runs apt-get upgrade, so a rebuild cannot clear them.
+#
+# All five are LOCAL privilege escalation requiring the ability to execute the
+# affected binary. This container runs as a non-root system user (uid 10001,
+# see the Dockerfile) and the service spawns no processes at all -- no
+# subprocess, no os.system, no shell-out anywhere in pgfoundation or
+# pgfoundation_api. Nothing in the request path can reach mount(8), nsenter(8)
+# or systemd-homed.
+#
+# util-linux (bsdutils, libblkid1, liblastlog2-2, libmount1, libsmartcols1,
+# libuuid1, login, mount, util-linux) -- mount-helper, nsenter --join-cgroup
+# and bind-mount handling. This service mounts nothing; the only "mount" in
+# the codebase is FastAPI router mounting.
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
+
+# libsystemd0 -- systemd-homed local privilege escalation. systemd-homed is not
+# installed or running in this image; libsystemd0 is present only as a
+# transitive dependency of the base image's package set.
+CVE-2026-16742

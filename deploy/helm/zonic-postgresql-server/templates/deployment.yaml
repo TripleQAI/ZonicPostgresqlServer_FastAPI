@@ -56,15 +56,22 @@ spec:
                 secretKeyRef:
                   name: zonic-postgresql-server-dsn
                   key: {{ .Values.secret.envVarName }}
-            {{- range .Values.secret.callerKeys }}
-            # One env var per caller. secretKeyRef, so the value is injected at
-            # pod start and never written to the pod spec -- a `kubectl get
-            # deployment -o yaml` shows the reference, not the credential.
-            - name: PGF_API_KEY_{{ .subject | upper | replace "-" "_" }}
-              valueFrom:
-                secretKeyRef:
-                  name: zonic-postgresql-server-dsn
-                  key: PGF_API_KEY_{{ .subject | upper | replace "-" "_" }}
+            {{- if .Values.secret.callerKeys }}
+            # Caller keys are NOT env vars, deliberately.
+            #
+            # A secretKeyRef is resolved by kubelet when it creates the
+            # container, but the CSI driver only populates the synced Secret
+            # AFTER the volume mount completes. For a key that has never been in
+            # that Secret before, those two orderings race and the container
+            # loses: "couldn't find key PGF_API_KEY_... in Secret", while the
+            # mounted file is present and correct. The DSN survives only because
+            # its key has been in the Secret since an earlier deploy.
+            #
+            # bootstrap/providers.py reads /mnt/secrets-store/caller-<subject>
+            # instead, which the mount guarantees exists before this container
+            # starts. The path is overridable for tests.
+            - name: PGF_API_KEY_MOUNT_PATH
+              value: /mnt/secrets-store
             {{- end }}
           readinessProbe:
             httpGet:

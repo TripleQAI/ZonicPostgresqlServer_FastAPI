@@ -43,9 +43,10 @@ ingress:
   # Fill from the infra repo, AFTER applying environments/development/network:
   #   terraform output -raw application_waf_web_acl_arn
   #
-  # Left empty until then on purpose: a wrong ARN is rejected by the controller
-  # and the Ingress stops reconciling, which is worse than no WAF.
-  wafAclArn: ""
+  # Applied 2026-09-12; re-read with `terraform output -raw
+  # application_waf_web_acl_arn` if the ACL is ever recreated, because the id
+  # segment changes and a stale ARN stops the Ingress reconciling.
+  wafAclArn: "arn:aws:wafv2:us-east-1:001634074733:regional/webacl/tripleq-development-application/6a328fd9-cc65-4759-b60b-a6be5134488c"
   host: "pgfoundation.dev.tripleq.ai"
   certificateArn: "arn:aws:acm:us-east-1:001634074733:certificate/1f9da6b8-35d9-4c5e-a1c3-e17480da20be"
   loadBalancerName: "zonic-postgresql-server-pub"

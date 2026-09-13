@@ -7,6 +7,7 @@ this process uses. Everything else depends on the ports.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from pgfoundation._internal.observability.noop import NoopMetrics
 
@@ -28,6 +29,20 @@ from ..settings import AuthSettings, ObservabilitySettings
 # The suffix is the caller subject, upper-cased with '-' as '_':
 #   zonic-bff -> PGF_API_KEY_ZONIC_BFF
 API_KEY_ENV_PREFIX = "PGF_API_KEY_"
+
+# Where the secrets-store CSI driver writes each mounted object as a FILE.
+#
+# Files, not the synced Kubernetes Secret, are the primary source. The driver
+# writes these DURING the volume mount, which completes before the container is
+# created; it populates the Secret afterwards, and kubelet resolves every
+# secretKeyRef at container-creation time. Those two orderings race, and a key
+# that has never been in the Secret before loses: the container fails with
+# "couldn't find key PGF_API_KEY_... in Secret", while the file is sitting there
+# correctly mounted. Cost three rollouts to find, 2026-09-13.
+#
+# An env var still wins when set, so a deployment that injects keys some other
+# way -- or a test -- needs no file.
+API_KEY_MOUNT_PATH = "/mnt/secrets-store"
 
 
 def _env_var_for(subject: str) -> str:
@@ -89,12 +104,23 @@ def load_api_keys(settings: AuthSettings, environ: dict[str, str] | None = None)
             "empty; no caller could ever be authorized -- refusing to start"
         )
 
+    mount = Path(env.get("PGF_API_KEY_MOUNT_PATH", API_KEY_MOUNT_PATH))
+
     keys: dict[str, str] = {}
     missing: list[str] = []
     for subject in subjects:
+        # Env var first so an explicit injection always wins, then the mounted
+        # file, which is what the CSI driver guarantees is present before this
+        # process starts.
         value = env.get(_env_var_for(subject), "").strip()
         if not value:
-            missing.append(f"{subject} ({_env_var_for(subject)})")
+            candidate = mount / f"caller-{subject}"
+            try:
+                value = candidate.read_text(encoding="utf-8").strip()
+            except OSError:
+                value = ""
+        if not value:
+            missing.append(f"{subject} ({_env_var_for(subject)} or {mount}/caller-{subject})")
             continue
         keys[subject] = value
 
@@ -110,4 +136,4 @@ def load_api_keys(settings: AuthSettings, environ: dict[str, str] | None = None)
     return keys
 
 
-__all__ = ["API_KEY_ENV_PREFIX", "build_metrics", "load_api_keys"]
+__all__ = ["API_KEY_ENV_PREFIX", "API_KEY_MOUNT_PATH", "build_metrics", "load_api_keys"]

@@ -152,3 +152,79 @@ def test_the_gate_accepts_keys_and_enables_auth() -> None:
     gate = build_auth_gate(auth_settings(), api_keys={"zonic-bff": "key-1"})
 
     assert gate.enabled is True
+
+
+# --------------------------------------------------------------------------- #
+# Keys mounted as files (the CSI driver's own delivery mechanism)
+# --------------------------------------------------------------------------- #
+def test_a_key_is_read_from_the_mounted_file(tmp_path) -> None:
+    """The path that actually runs in the cluster.
+
+    The CSI driver writes each object as a file DURING the volume mount, which
+    completes before the container is created. The Kubernetes Secret it also
+    populates is written afterwards, and kubelet resolves every secretKeyRef at
+    container-creation time -- so a key that has never been in that Secret loses
+    the race and the container fails with "couldn't find key ... in Secret"
+    while the file is present and correct.
+    """
+    (tmp_path / "caller-zonic-bff").write_text("file-key", encoding="utf-8")
+
+    keys = load_api_keys(
+        auth_settings(
+            policy=AuthPolicySettings(
+                default="deny",
+                callers=[CallerPolicy(subject="zonic-bff", datasources=["tsdb"], actions=["read"])],
+            )
+        ),
+        {"PGF_API_KEY_MOUNT_PATH": str(tmp_path)},
+    )
+
+    assert keys == {"zonic-bff": "file-key"}
+
+
+def test_the_environment_wins_over_the_mounted_file(tmp_path) -> None:
+    """An explicit injection must beat whatever happens to be on disk, so a
+    deployment that supplies keys another way needs no file."""
+    (tmp_path / "caller-zonic-bff").write_text("file-key", encoding="utf-8")
+
+    keys = load_api_keys(
+        auth_settings(
+            policy=AuthPolicySettings(
+                default="deny",
+                callers=[CallerPolicy(subject="zonic-bff", datasources=["tsdb"], actions=["read"])],
+            )
+        ),
+        {"PGF_API_KEY_MOUNT_PATH": str(tmp_path), f"{API_KEY_ENV_PREFIX}ZONIC_BFF": "env-key"},
+    )
+
+    assert keys == {"zonic-bff": "env-key"}
+
+
+def test_a_blank_mounted_file_refuses_to_start(tmp_path) -> None:
+    """An empty file is what a half-written mount leaves behind. Registering it
+    would mean a credential nothing can present."""
+    (tmp_path / "caller-zonic-bff").write_text("   \n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="zonic-bff"):
+        load_api_keys(
+            auth_settings(
+                policy=AuthPolicySettings(
+                    default="deny",
+                    callers=[
+                        CallerPolicy(subject="zonic-bff", datasources=["tsdb"], actions=["read"])
+                    ],
+                )
+            ),
+            {"PGF_API_KEY_MOUNT_PATH": str(tmp_path)},
+        )
+
+
+def test_the_error_names_both_sources(tmp_path) -> None:
+    """An operator reading a startup failure should not have to guess whether
+    the key was meant to arrive as a file or as an env var."""
+    with pytest.raises(RuntimeError) as raised:
+        load_api_keys(auth_settings(), {"PGF_API_KEY_MOUNT_PATH": str(tmp_path)})
+
+    message = str(raised.value)
+    assert "PGF_API_KEY_ZONIC_BFF" in message
+    assert "caller-zonic-bff" in message

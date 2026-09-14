@@ -21,6 +21,31 @@
       "value": "tsdb",
       "type": "string",
       "description": "Only real data source configured on this deployment. Discover with GET /v1/datasources."
+    },
+    {
+      "key": "bffUrl",
+      "value": "https://auth.dev.tripleq.ai",
+      "description": "zonic-bff-python in development. The only publicly reachable auth endpoint."
+    },
+    {
+      "key": "authzInternalUrl",
+      "value": "http://zonic-authorization-server.zonic-authz.svc.cluster.local",
+      "description": "Authorization Server. IN-CLUSTER ONLY - does not resolve from Postman."
+    },
+    {
+      "key": "authCode",
+      "value": "",
+      "description": "Filled by the browser redirect in a real flow; blank here."
+    },
+    {
+      "key": "authState",
+      "value": "",
+      "description": "Filled by the browser redirect in a real flow; blank here."
+    },
+    {
+      "key": "csrfToken",
+      "value": "",
+      "description": "Value of the __Host-zonic_csrf cookie, for the X-Zonic-CSRF-Token header."
     }
   ],
   "item": [
@@ -940,6 +965,259 @@
               "raw": "{\"name\": \"anything\"}"
             },
             "description": "Expect 404 {\"error\":\"unknown data source 'bogus'; known: ['...']\",\"type\":\"ConfigError\",\"request_id\":\"...\"}. On pgfoundation.dev.tripleq.ai the known list is ['tsdb'] — confirmed live."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Auth — BFF operational (public, no session)",
+      "description": "The zonic-bff-python service at https://auth.dev.tripleq.ai — the ONLY publicly reachable part of the auth platform. Verified live 2026-09-14.",
+      "item": [
+        {
+          "name": "Liveness — GET /health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{bffUrl}}/health",
+              "host": [
+                "{{bffUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Verified 2026-09-14: 200 {\"status\":\"ok\"}.\n\nNote the path is /health and /ready at the ROOT — the BFF does not use the /health/live and /health/ready prefix the Authorization Server does."
+          }
+        },
+        {
+          "name": "Readiness — GET /ready",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{bffUrl}}/ready",
+              "host": [
+                "{{bffUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            },
+            "description": "Verified 2026-09-14:\n\n    200 {\"ready\":true,\"checks\":{\"session_store\":true,\"login_state_store\":true}}\n\nBoth checks are Redis (ElastiCache): the session store and the short-lived login-state store that holds the PKCE verifier between /bff/login and /bff/callback. A false here means Redis, not the Authorization Server."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Auth — the login flow (browser-driven)",
+      "description": "The OAuth2 + PKCE authorization-code flow. READ THE FOLDER DESCRIPTION IN REQUEST 1 BEFORE RUNNING: the redirect target is currently an in-cluster URL, so this flow cannot be completed from outside the cluster.",
+      "item": [
+        {
+          "name": "1. Start login — GET /bff/login",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{bffUrl}}/bff/login",
+              "host": [
+                "{{bffUrl}}"
+              ],
+              "path": [
+                "bff",
+                "login"
+              ]
+            },
+            "description": "Verified live 2026-09-14. Returns 302 with:\n\n  Set-Cookie: __Host-zonic_login=<id>; HttpOnly; Max-Age=600; Path=/; SameSite=lax; Secure\n  Location:   http://zonic-authorization-server.zonic-authz.svc.cluster.local/oauth2/authorize?client_id=zonic-bff&redirect_uri=https%3A%2F%2Fauth.dev.tripleq.ai%2Fbff%2Fcallback&response_type=code&code_challenge=<S256>&code_challenge_method=S256&state=<opaque>\n\n=== THIS FLOW CANNOT BE COMPLETED FROM POSTMAN TODAY ===\n\nThe Location is the Authorization Server's IN-CLUSTER Service URL. It resolves only inside the EKS cluster, so neither Postman nor a browser can follow it. That is not a misconfiguration to work around here: the Authorization Server has NO Ingress at all (its Helm chart has no ingress template), and ZONIC_AUTHZ_ISSUER is deliberately set to the Service URL because that is the only address it has.\n\nTurn OFF Postman's 'Automatically follow redirects' (Settings → General) so you can read the 302 rather than watch it fail.\n\nWhat you CAN verify here, and it is worth doing:\n  * the 302 is issued at all (the BFF composed and reached its stores)\n  * __Host-zonic_login is set, Secure + HttpOnly, 600s\n  * code_challenge_method=S256 and a fresh code_challenge per call\n  * state is a fresh opaque value per call\n  * client_id=zonic-bff and redirect_uri points back at this BFF\n\nCall it twice: code_challenge and state MUST differ. If they repeat, the PKCE generator is broken and the flow is replayable.\n\nTo make this reachable, the Authorization Server needs an internal Ingress and a public issuer, and ZONIC_AUTHZ_ISSUER must match it exactly — the issuer is a signed token claim, so changing it invalidates tokens minted under the old value."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Read the 302 without following it.",
+                  "pm.test('302 redirect issued', function () {",
+                  "    pm.expect(pm.response.code).to.eql(302);",
+                  "});",
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "pm.test('PKCE uses S256', function () {",
+                  "    pm.expect(loc).to.include('code_challenge_method=S256');",
+                  "});",
+                  "pm.test('client_id is zonic-bff', function () {",
+                  "    pm.expect(loc).to.include('client_id=zonic-bff');",
+                  "});",
+                  "// Keep state so a second run can prove it changes.",
+                  "const m = loc.match(/[?&]state=([^&]+)/);",
+                  "if (m) {",
+                  "    const prev = pm.collectionVariables.get('lastLoginState');",
+                  "    if (prev) {",
+                  "        pm.test('state differs from the previous login', function () {",
+                  "            pm.expect(m[1]).to.not.eql(prev);",
+                  "        });",
+                  "    }",
+                  "    pm.collectionVariables.set('lastLoginState', m[1]);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Callback — GET /bff/callback (reference only)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{bffUrl}}/bff/callback?code={{authCode}}&state={{authState}}",
+              "host": [
+                "{{bffUrl}}"
+              ],
+              "path": [
+                "bff",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "{{authCode}}"
+                },
+                {
+                  "key": "state",
+                  "value": "{{authState}}"
+                }
+              ]
+            },
+            "description": "WHEN THIS FIRES: the Authorization Server redirects the BROWSER here after the user submits credentials at its /login page. You never call it by hand in a working flow — it is the browser's second hop, carrying ?code= and ?state= as query parameters.\n\nWhat it does, in order (src/zonic_bff/api/routes.py):\n  1. reads __Host-zonic_login from the request cookies; 400 'no login in progress for this browser' if absent\n  2. CONSUMES the login state — single use. A replay of the same callback gets 400 'login state expired or already used'\n  3. compares state exactly (RFC 6749 s10.12); a mismatch means the request did not originate from the redirect this BFF issued\n  4. exchanges the code + PKCE verifier for tokens at the Authorization Server\n  5. sets __Host-zonic_session (HttpOnly) and __Host-zonic_csrf (NOT HttpOnly, so the frontend can read it), deletes the login cookie, and 302s to the post-login redirect\n\nCalling this in Postman without a real code returns 400. That is correct behaviour, not a broken request — and the two 400s above are worth triggering deliberately, because they are the CSRF and replay defences."
+          }
+        },
+        {
+          "name": "3. Get an access token — GET /bff/session/token",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{bffUrl}}/bff/session/token",
+              "host": [
+                "{{bffUrl}}"
+              ],
+              "path": [
+                "bff",
+                "session",
+                "token"
+              ]
+            },
+            "description": "Verified live 2026-09-14 WITHOUT a session cookie:\n\n    401 {\"detail\":\"no session cookie\"}\n\nThat is the correct unauthenticated response and the one you can reproduce today. With a valid __Host-zonic_session cookie it returns:\n\n    200 {\"access_token\":\"<JWT>\",\"expires_in\":900}\n\nThe access token is NEVER stored in the browser — the frontend calls this endpoint each time it needs one, and the refresh token stays server-side, encrypted, in Redis. This is the entire point of the BFF pattern: a stolen XSS payload cannot exfiltrate a refresh token it can never see.\n\nIf the access token has expired, the BFF refreshes it transparently (refresher.ensure_fresh). A 401 'session could not be refreshed' means the refresh token itself expired — 30 days — and the user must log in again."
+          }
+        },
+        {
+          "name": "4. Logout — POST /bff/session/logout",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{bffUrl}}/bff/session/logout",
+              "host": [
+                "{{bffUrl}}"
+              ],
+              "path": [
+                "bff",
+                "session",
+                "logout"
+              ]
+            },
+            "description": "Requires BOTH:\n  * the __Host-zonic_session cookie (sent automatically by a browser)\n  * an X-Zonic-CSRF-Token header whose value equals the __Host-zonic_csrf cookie\n\nThis is the double-submit CSRF defence. A cross-site form can make the browser SEND the session cookie, but cannot make it set a custom header — so the header is the proof the request came from your own frontend. The comparison is constant-time (hmac.compare_digest).\n\nWithout the header: 403 {\"detail\":\"CSRF validation failed\"}.\nWithout a session cookie: 401 — the session dependency runs first.\n\nThe CSRF cookie is deliberately NOT HttpOnly: the frontend reads it from document.cookie to set this header. That is the supported pattern, not a leak.\n\nOn success the BFF revokes the refresh token at the Authorization Server, deletes the server-side session, and clears both cookies.",
+            "header": [
+              {
+                "key": "X-Zonic-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Must equal the __Host-zonic_csrf cookie value."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Auth — Authorization Server (NOT publicly reachable)",
+      "description": "Reference only. Every endpoint here is ClusterIP-internal and cannot be called from Postman — see the folder notes for how to reach them.",
+      "item": [
+        {
+          "name": "How to call these at all — READ FIRST",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{bffUrl}}/health",
+              "host": [
+                "{{bffUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "THE AUTHORIZATION SERVER HAS NO PUBLIC ENDPOINT.\n\nVerified 2026-09-14: authz.dev.tripleq.ai does not resolve, and the Helm chart (deploy/helm/zonic-authz/templates/) contains no ingress template at all. Its only address is the in-cluster Service:\n\n    http://zonic-authorization-server.zonic-authz.svc.cluster.local\n\nThat is deliberate. Its only caller is the BFF, and it holds kms:Sign — putting an ALB in front of the component that mints tokens buys no routing benefit and widens the attack surface.\n\nTo exercise the endpoints listed in this folder, run from INSIDE the cluster (note curl is not in the image — use python3):\n\n    kubectl -n zonic-authz exec deploy/zonic-authz-token-provider -- python3 -c \\\n      \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/health/ready').read().decode())\"\n\nThis request itself just hits the BFF's /health so the folder is runnable; the value here is the documentation."
+          }
+        },
+        {
+          "name": "Discovery — GET /.well-known/openid-configuration (in-cluster)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{authzInternalUrl}}/.well-known/openid-configuration",
+              "host": [
+                "{{authzInternalUrl}}"
+              ],
+              "path": [
+                ".well-known",
+                "openid-configuration"
+              ]
+            },
+            "description": "In-cluster only. Advertises the issuer, the authorize/token/revoke endpoints and the JWKS location.\n\nThe issuer is http://zonic-authorization-server.zonic-authz.svc.cluster.local and it is a SIGNED CLAIM in every access token. Changing it — for example to give this service a public hostname — invalidates every token minted under the old value, so it is a coordinated change with the BFF, not a config tweak."
+          }
+        },
+        {
+          "name": "JWKS — GET /.well-known/jwks.json (in-cluster)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{authzInternalUrl}}/.well-known/jwks.json",
+              "host": [
+                "{{authzInternalUrl}}"
+              ],
+              "path": [
+                ".well-known",
+                "jwks.json"
+              ]
+            },
+            "description": "In-cluster only. The public half of the KMS signing key, so any resource server can verify an access token without calling back here.\n\nThe private key never leaves KMS: the Authorization Server holds kms:Sign and nothing else, and the key id is zonic-authz-development-2026-09."
+          }
+        },
+        {
+          "name": "Authorization check — POST /internal/v1/authorization/check (in-cluster)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{authzInternalUrl}}/internal/v1/authorization/check",
+              "host": [
+                "{{authzInternalUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "authorization",
+                "check"
+              ]
+            },
+            "description": "In-cluster only, and NOT servable today even from inside: this is a PDP endpoint, and no PDP release is deployed.\n\n_pdp_components raises BindingError by design while pip/resolvers/ is an empty package — an empty resolver registry would DENY every request naming a resolver while reporting the replica healthy, which is worse than refusing to start. The token-provider release is the only one running.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": {\n    \"id\": \"user-id\"\n  },\n  \"action\": \"read\",\n  \"resource\": {\n    \"type\": \"document\",\n    \"id\": \"doc-1\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]

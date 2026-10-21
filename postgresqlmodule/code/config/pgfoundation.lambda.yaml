@@ -1,0 +1,70 @@
+# pgfoundation — AWS Lambda config (deploy/aws-lambda/).
+#
+# Structure and tunables only. NO SECRETS: the DSN and the caller key reach the
+# function as Lambda environment variables (encrypted at rest), resolved by the
+# loader through ${env:...} exactly as in every other deployment target.
+#
+# Connection budget: one process per Lambda execution environment, and this
+# account allows at most 10 concurrent environments, so the worst case is
+# 10 x pool.max_size = 30 connections, comfortably inside a Neon free-plan
+# compute's connection limit.
+
+datasources:
+  # --- neondb: Neon free plan -------------------------------------------------
+  # The alias IS the database name (Neon's default database is `neondb`).
+  # Use the DIRECT endpoint (host without "-pooler") so server-side cursors and
+  # session SET keep working (§12.6).
+  #
+  # Tuned for an environment that is frozen between requests while Neon
+  # suspends its compute after ~5 idle minutes:
+  #   * min_size 0      — idle connections are not worth holding across a freeze.
+  #   * max_idle 240s   — drop idle connections before Neon's suspend would.
+  #   * max_size 3      — keeps the 30-connection worst case above.
+  #   * acquire_timeout 10s — leaves room for a Neon cold start (compute resume).
+  #   * check_on_checkout — a frozen environment cannot drop idle connections on
+  #                     time, so validate each one as it leaves the pool. Without
+  #                     it, the first request after a Neon suspend fails (tested:
+  #                     57P01 surfaced as HTTP 400).
+  - name: neondb
+    dsn: ${env:PGF_NEON_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
+resilience:
+  retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
+  circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
+
+concurrency:
+  # Must stay within the sum of pool.max_size (3), or the limiter would admit work
+  # the pool cannot hold (doc 05 §5.5).
+  max_inflight_total: 3
+  max_inflight_per_datasource: 3
+  admission_timeout_ms: 2000
+
+batch:
+  # Must be <= concurrency.max_inflight_total.
+  max_concurrency: 3
+
+auth:
+  # A public Function URL must authenticate callers (ADR-008). Token provider:
+  # each caller's key arrives as PGF_API_KEY_<SUBJECT>; anything not listed is refused.
+  enabled: true
+  provider: token
+  policy:
+    default: deny
+    callers:
+      # The Agent Builder API (ZonicAgentBuilderServer_FastAPI) reads views and
+      # calls procedures, so it needs both actions.
+      - subject: zonic-agent-builder
+        datasources: [neondb]
+        actions: [read, write]
+
+api:
+  docs_enabled: false       # no free map of the surface on a public endpoint
+  enable_raw_sql: false     # raw SQL never ships past local dev
+
+observability:
+  provider: none
+  log_level: info

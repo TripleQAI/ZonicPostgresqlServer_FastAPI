@@ -18,7 +18,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 |---|---|
 | `Dockerfile` | Service image plus the AWS Lambda Web Adapter 0.9.1; runtime dependencies only |
 | `deploy.sh` | Idempotent deployment: ECR repository, image build and push, IAM role, function, Function URL, smoke test |
-| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb` datasource, token auth, small pool |
+| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb` and `neondb_dev` datasources, token auth, small pools |
 
 ## Cost
 
@@ -33,15 +33,22 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 ## Prerequisites
 
 - AWS CLI v2 with a working profile (default `your-aws-profile`), Docker with Buildx, Git Bash or Linux.
-- A Neon **direct** connection string (host without `-pooler`), saved in the gitignored
-  repository-root `.env`:
+- Two Neon **direct** connection strings (hosts without `-pooler`), saved in the
+  gitignored repository-root `.env`:
 
   ```
   PGF_NEON_DSN=postgresql://<user>:<password>@<endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
+  PGF_NEON_DEV_DSN=postgresql://<user>:<password>@<dev-endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
   ```
 
-  The datasource alias is `neondb`, Neon's default database name. If the database has
-  a different name, change `name:` in `pgfoundation.lambda.yaml`.
+  | Datasource | Neon branch | Use |
+  |---|---|---|
+  | `neondb` | `production` | Demonstrations and real workflows |
+  | `neondb_dev` | `dev` | Development and the builder's live test suite |
+
+  Both branches use Neon's default database `neondb`. The datasource names are only
+  labels in `pgfoundation.lambda.yaml`; each DSN decides which branch is used.
+  `deploy.sh` stops if either variable is missing.
 
 ## Deploy or redeploy
 
@@ -72,13 +79,23 @@ Set these for `ZonicAgentBuilderServer_FastAPI` (environment variables or its `.
 ```
 PG_GATEWAY_PROVIDER=http
 PG_GATEWAY_BASE_URL=<Function URL without the trailing slash>
-PG_GATEWAY_DATASOURCE=neondb
+PG_GATEWAY_DATASOURCE=neondb_dev        # neondb for production
 PG_GATEWAY_SCHEMA=agent_builder
 PG_GATEWAY_AUTH_HEADER=Authorization: Bearer <PGF_API_KEY_ZONIC_AGENT_BUILDER>
 ```
 
-The builder's views and procedures must exist in Neon first: run its `db/` scripts
-(`000_preflight.sql`, then `001` to `010`) against the Neon database.
+The builder's schema (`agent_builder`: 7 tables, 8 views, 11 functions and
+procedures) was installed on both branches on 21 October 2026 with its `db/run_all.sql`
+(scripts `001` to `010`). The scripts are idempotent, so rerun them after a change.
+Without a local `psql`, use the `postgres:18-alpine` image and pass the DSN as an
+environment variable, so it does not appear on the command line:
+
+```bash
+export PGURI="$PGF_NEON_DEV_DSN"
+MSYS_NO_PATHCONV=1 docker run --rm -e PGURI \
+  -v "<path to ZonicAgentBuilderServer_FastAPI>/db:/db:ro" -w /db postgres:18-alpine \
+  sh -c 'psql "$PGURI" -v ON_ERROR_STOP=1 -f run_all.sql'
+```
 
 ## Operating notes
 
@@ -88,7 +105,8 @@ The builder's views and procedures must exist in Neon first: run its `db/` scrip
   on time, so the pool validates each connection at checkout
   (`pool.check_on_checkout: true`) and replaces any that Neon has closed.
 - **Connection budget.** At most 10 concurrent environments (this account's Lambda
-  limit) times `pool.max_size` 3 equals 30 connections.
+  limit) times `pool.max_size` 3 equals 30 connections per datasource. Each datasource
+  is a separate Neon branch with its own compute, so each compute sees at most 30.
 - **Limits.** Function timeout 60 seconds; statement timeout 30 seconds.
 - **Rotate the caller key.** Delete the line from `.env.lambda`, rerun `deploy.sh`, and
   update every caller.

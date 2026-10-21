@@ -14,7 +14,8 @@
 #   bash deploy/aws-lambda/deploy.sh
 #
 # Inputs (both files are gitignored by `.env` / `.env.*`):
-#   .env          PGF_NEON_DSN=postgresql://...   Neon DIRECT connection string
+#   .env          PGF_NEON_DSN=postgresql://...       Neon DIRECT connection string (production branch)
+#                 PGF_NEON_DEV_DSN=postgresql://...   Neon DIRECT connection string (branch dev)
 #   .env.lambda   PGF_API_KEY_ZONIC_AGENT_BUILDER=...   generated on first run
 #
 # Overridable environment variables:
@@ -54,9 +55,17 @@ if [ -z "$NEON_DSN" ]; then
   echo "PGF_NEON_DSN is missing from $ROOT/.env" >&2
   exit 1
 fi
-case "$NEON_DSN" in
-  *-pooler.*) echo "warning: this is Neon's pooled endpoint; the direct endpoint is recommended" >&2 ;;
-esac
+# Datasource neondb_dev (config/pgfoundation.lambda.yaml) reads this one.
+NEON_DEV_DSN="$(read_var "$ROOT/.env" PGF_NEON_DEV_DSN)"
+if [ -z "$NEON_DEV_DSN" ]; then
+  echo "PGF_NEON_DEV_DSN is missing from $ROOT/.env (Neon branch dev, datasource neondb_dev)" >&2
+  exit 1
+fi
+for dsn in "$NEON_DSN" "$NEON_DEV_DSN"; do
+  case "$dsn" in
+    *-pooler.*) echo "warning: a DSN uses Neon's pooled endpoint; the direct endpoint is recommended" >&2 ;;
+  esac
+done
 
 # Same region as the database keeps every query off the long-haul network.
 NEON_REGION="$(printf '%s' "$NEON_DSN" | sed -nE 's/.*\.([a-z]{2}-[a-z]+-[0-9])\.aws\.neon\.tech.*/\1/p')"
@@ -113,8 +122,8 @@ ROLE_ARN="$(aws iam get-role --role-name "$ROLE" --query Role.Arn --output text)
 ENV_FILE="$(mktemp)"
 ERR_FILE="$(mktemp)"
 trap 'rm -f "$ENV_FILE" "$ERR_FILE"' EXIT
-NEON_DSN="$NEON_DSN" API_KEY="$API_KEY" API_KEY_VAR="$API_KEY_VAR" "$PY" -c \
-  'import json, os; print(json.dumps({"Variables": {"PGF_NEON_DSN": os.environ["NEON_DSN"], os.environ["API_KEY_VAR"]: os.environ["API_KEY"]}}))' \
+NEON_DSN="$NEON_DSN" NEON_DEV_DSN="$NEON_DEV_DSN" API_KEY="$API_KEY" API_KEY_VAR="$API_KEY_VAR" "$PY" -c \
+  'import json, os; print(json.dumps({"Variables": {"PGF_NEON_DSN": os.environ["NEON_DSN"], "PGF_NEON_DEV_DSN": os.environ["NEON_DEV_DSN"], os.environ["API_KEY_VAR"]: os.environ["API_KEY"]}}))' \
   > "$ENV_FILE"
 ENV_URI="file://$(native_path "$ENV_FILE")"
 
@@ -176,7 +185,7 @@ curl -sS --retry 3 --retry-all-errors --retry-delay 2 -m 30 -w '  [HTTP %{http_c
 cat <<EOF
 
 Endpoint:    $BASE
-Datasource:  neondb
+Datasources: neondb (production branch), neondb_dev (branch dev)
 Caller key:  $ROOT/.env.lambda ($API_KEY_VAR)
 Call with:   Authorization: Bearer <key>
 EOF

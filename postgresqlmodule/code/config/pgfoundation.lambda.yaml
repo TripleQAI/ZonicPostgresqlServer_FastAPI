@@ -1,13 +1,14 @@
 # pgfoundation — AWS Lambda config (deploy/aws-lambda/).
 #
-# Structure and tunables only. NO SECRETS: the DSN and the caller key reach the
+# Structure and tunables only. NO SECRETS: the DSNs and the caller key reach the
 # function as Lambda environment variables (encrypted at rest), resolved by the
 # loader through ${env:...} exactly as in every other deployment target.
 #
 # Connection budget: one process per Lambda execution environment, and this
 # account allows at most 10 concurrent environments, so the worst case is
-# 10 x pool.max_size = 30 connections, comfortably inside a Neon free-plan
-# compute's connection limit.
+# 10 x pool.max_size = 30 connections per datasource. Each datasource is a
+# separate Neon branch with its own compute, so each compute sees at most 30,
+# comfortably inside a Neon free-plan compute's connection limit.
 
 datasources:
   # --- neondb: Neon free plan -------------------------------------------------
@@ -32,13 +33,25 @@ datasources:
     pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
     stream: { itersize: 5000 }
 
+  # --- neondb_dev: Neon branch `dev` ------------------------------------------
+  # Development and the builder's live test suite, so test data never touches
+  # the production branch. Same database name (`neondb`) on its own compute;
+  # same tuning as above, for the same reasons.
+  - name: neondb_dev
+    dsn: ${env:PGF_NEON_DEV_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
 resilience:
   retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
   circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
 
 concurrency:
-  # Must stay within the sum of pool.max_size (3), or the limiter would admit work
-  # the pool cannot hold (doc 05 §5.5).
+  # Must stay within the sum of pool.max_size (3 + 3), or the limiter would admit
+  # work the pools cannot hold (doc 05 §5.5). Per datasource it must stay within
+  # that datasource's max_size (3).
   max_inflight_total: 3
   max_inflight_per_datasource: 3
   admission_timeout_ms: 2000
@@ -58,7 +71,7 @@ auth:
       # The Agent Builder API (ZonicAgentBuilderServer_FastAPI) reads views and
       # calls procedures, so it needs both actions.
       - subject: zonic-agent-builder
-        datasources: [neondb]
+        datasources: [neondb, neondb_dev]
         actions: [read, write]
 
 api:

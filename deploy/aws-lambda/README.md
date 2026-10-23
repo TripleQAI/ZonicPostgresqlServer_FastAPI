@@ -33,8 +33,14 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 ## Prerequisites
 
 - AWS CLI v2 with a working profile (default `your-aws-profile`), Docker with Buildx, Git Bash or Linux.
-- Two Neon **direct** connection strings (hosts without `-pooler`), saved in the
-  gitignored repository-root `.env`:
+- Credentials in AWS Secrets Manager: secret `zonic-postgresql-server/runtime`
+  (account `633160612720`, `us-east-1`) holds `PGF_NEON_DSN`, `PGF_NEON_DEV_DSN` and
+  `PGF_API_KEY_ZONIC_AGENT_BUILDER` as one JSON object. `deploy.sh` reads it first.
+  Read the values with
+  `aws secretsmanager get-secret-value --secret-id zonic-postgresql-server/runtime --region us-east-1`.
+- Fallback when the secret does not exist: two Neon **direct** connection strings
+  (hosts without `-pooler`), saved in the gitignored repository-root `.env`; the
+  script then creates the secret from them on its first run:
 
   ```
   PGF_NEON_DSN=postgresql://<user>:<password>@<endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
@@ -48,7 +54,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 
   Both branches use Neon's default database `neondb`. The datasource names are only
   labels in `pgfoundation.lambda.yaml`; each DSN decides which branch is used.
-  `deploy.sh` stops if either variable is missing.
+  `deploy.sh` stops if either variable is missing from both the secret and `.env`.
 
 ## Deploy or redeploy
 
@@ -56,8 +62,8 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 bash deploy/aws-lambda/deploy.sh
 ```
 
-The first run creates the caller key in the gitignored `.env.lambda`
-(`PGF_API_KEY_ZONIC_AGENT_BUILDER`) and prints the endpoint. Later runs build a new
+The first run creates the caller key (`PGF_API_KEY_ZONIC_AGENT_BUILDER`), stores it in
+the secret and in the gitignored `.env.lambda`, and prints the endpoint. Later runs build a new
 image and roll the function forward. The Lambda region defaults to the Neon
 endpoint's region.
 
@@ -108,8 +114,12 @@ MSYS_NO_PATHCONV=1 docker run --rm -e PGURI \
   limit) times `pool.max_size` 3 equals 30 connections per datasource. Each datasource
   is a separate Neon branch with its own compute, so each compute sees at most 30.
 - **Limits.** Function timeout 60 seconds; statement timeout 30 seconds.
-- **Rotate the caller key.** Delete the line from `.env.lambda`, rerun `deploy.sh`, and
-  update every caller.
+- **Rotate the caller key.** Generate a new key (`openssl rand -hex 32`), write it to
+  `PGF_API_KEY_ZONIC_AGENT_BUILDER` in the secret (`aws secretsmanager put-secret-value`
+  with the full JSON object) and in `.env.lambda`, rerun `deploy.sh`, and update every
+  caller.
+- **Rotate a Neon password.** Reset it in the Neon console, update the DSN in the secret
+  and in `.env`, and rerun `deploy.sh`.
 
 ## Remove everything
 

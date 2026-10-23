@@ -40,6 +40,11 @@ class PoolPolicy:
     acquire_timeout_seconds: float = 5.0
     max_idle_seconds: float = 300.0
     max_lifetime_seconds: float = 1800.0
+    # Validate each connection as it leaves the pool. Off by default; for hosts
+    # whose process is frozen between requests (AWS Lambda) while the database
+    # closes idle sessions (Neon scale-to-zero), so a dead connection is replaced
+    # instead of failing the request.
+    check_on_checkout: bool = False
     statement_timeout_ms: int | None = None
     read_only: bool = False
     # P5.2/P5.3 — were hard-coded (itersize=1000 in the handle signature, the

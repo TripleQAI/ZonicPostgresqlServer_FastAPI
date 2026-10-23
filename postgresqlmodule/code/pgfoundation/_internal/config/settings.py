@@ -14,6 +14,7 @@ class PoolSettings(BaseModel):
     acquire_timeout_seconds: float = Field(5.0, gt=0)
     max_idle_seconds: float = Field(300.0, gt=0)
     max_lifetime_seconds: float = Field(1800.0, gt=0)
+    check_on_checkout: bool = False
 
     @field_validator("max_size")
     @classmethod
@@ -54,6 +55,7 @@ class DataSourceSettings(BaseModel):
             acquire_timeout_seconds=self.pool.acquire_timeout_seconds,
             max_idle_seconds=self.pool.max_idle_seconds,
             max_lifetime_seconds=self.pool.max_lifetime_seconds,
+            check_on_checkout=self.pool.check_on_checkout,
             statement_timeout_ms=self.statement_timeout_ms,
             read_only=self.read_only,
             itersize=self.stream.itersize,

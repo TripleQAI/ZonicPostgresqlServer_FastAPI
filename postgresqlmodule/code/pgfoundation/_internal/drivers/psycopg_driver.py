@@ -242,6 +242,9 @@ class PsycopgPool:
             max_idle=self._policy.max_idle_seconds,
             max_lifetime=self._policy.max_lifetime_seconds,
             timeout=self._policy.acquire_timeout_seconds,
+            # Opt-in (pool.check_on_checkout): costs one round trip per checkout,
+            # and replaces a connection the server has already closed.
+            check=AsyncConnectionPool.check_connection if self._policy.check_on_checkout else None,
             kwargs=connect_kwargs,
             open=False,
             configure=self._configure,

@@ -27,21 +27,22 @@ A rebuild of the PostgreSQL Database Foundation Server (`pgfoundation`) on
 
 ## Current deployment
 
-Verified on 23 October 2026: the function is active and `GET /health` returns 200.
+Verified on 26 October 2026: the function is active, `GET /ready` reports all four datasources healthy, and the caller keys reach only their own datasources.
 
 | Item | Value |
 |---|---|
-| Platform | AWS Lambda, account `633160612720`, region `us-east-1` |
+| Platform | AWS Lambda, account `001634074733` (`tripleq-development`), region `us-east-1` |
 | Function | `zonic-postgresql-server` (container image, arm64, 512 MB, 60-second timeout) |
-| Public endpoint | Lambda Function URL `https://e3idqtzbodidr22fmbipzkg7xy0hjeiw.lambda-url.us-east-1.on.aws/` |
+| Public endpoint | Lambda Function URL `https://sdyvf4y53x524cwgdisy2qyfqy0bgjkm.lambda-url.us-east-1.on.aws/` |
 | Endpoint authentication | The Function URL is open at the AWS level (`AuthType NONE`, `RESPONSE_STREAM`); every call needs the gateway's caller key as `Authorization: Bearer <key>` |
+| Callers | `zonic-agent-builder` (read and write on `neondb`, `neondb_dev`); `zonic-agent-runtime` (read and write on `agentruntime`, `agentobservability`) |
 | Container image | ECR repository `zonic-postgresql-server` |
-| Last deployment | 21 October 2026, 13:16 UTC (the `neondb_dev` datasource was added) |
-| Database | Neon PostgreSQL project `rough-wave-74333079`: branch `production` is datasource `neondb`; branch `dev` is datasource `neondb_dev` |
+| Last deployment | 26 October 2026 (moved from account `633160612720`, whose deployment was deleted; datasources `agentruntime` and `agentobservability` added) |
+| Database | Neon project `rough-wave-74333079`: branch `production` is datasource `neondb`; branch `dev` is datasource `neondb_dev`. Neon project `agent-build-langgraph`, branch `production`: datasources `agentruntime` and `agentobservability` |
 | Configuration | `postgresqlmodule/code/config/pgfoundation.lambda.yaml` |
 
 - **Deployment files:** `deploy/aws-lambda/` (Dockerfile, `deploy.sh`, README).
-- **Redeploy:** `bash deploy/aws-lambda/deploy.sh`.
+- **Redeploy:** `AWS_PROFILE=tripleq-development bash deploy/aws-lambda/deploy.sh`.
 - **Secrets:** the caller key and the Neon connection strings are stored in AWS Secrets Manager as `zonic-postgresql-server/runtime` (`us-east-1`), which `deploy.sh` reads first; copies stay in the git-ignored `.env.lambda` and `.env`, and the Lambda function receives them as environment variables. They are never committed. Read them with `aws secretsmanager get-secret-value --secret-id zonic-postgresql-server/runtime --region us-east-1`.
 - **Not live:** the Helm chart in `deploy/helm/zonic-postgresql-server` (for EKS) is not deployed yet.
 

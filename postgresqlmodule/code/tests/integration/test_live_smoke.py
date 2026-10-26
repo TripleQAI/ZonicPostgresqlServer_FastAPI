@@ -2,7 +2,7 @@
 
 Skips automatically if ``PGF_TEST_DSN`` is not set. Exercises the psycopg
 adapter end-to-end: query, transaction commit/rollback, execute_many, streaming,
-interval bucketing, watermark keyset, and multi-DB.
+interval bucketing, watermark keyset, pipelined statements, and multi-DB.
 """
 from __future__ import annotations
 
@@ -123,3 +123,14 @@ async def test_interval_bucketing_and_watermark():
         assert page.next_watermark.after is not None
 
         await h.execute(Command("DROP TABLE pgf_readings"))
+
+
+async def test_pipeline_returns_each_statements_rows():
+    # Sequential batches run on one pipelined connection; a statement's rows
+    # must survive pipeline mode (they were dropped before the driver synced).
+    async with await _db() as db:
+        results = await db.datasource("main").run_pipeline(
+            [Query("SELECT 1 AS n"), Query("SELECT n FROM generate_series(1, 3) AS n")]
+        )
+        assert [r.rows for r in results] == [[{"n": 1}], [{"n": 1}, {"n": 2}, {"n": 3}]]
+        assert [r.rowcount for r in results] == [1, 3]

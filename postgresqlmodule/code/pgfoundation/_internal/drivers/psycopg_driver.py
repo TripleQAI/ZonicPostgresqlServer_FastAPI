@@ -91,7 +91,15 @@ class PsycopgConnection:
         columns: list[str] | None = None
         try:
             async with self._conn.cursor(row_factory=factory) as cur:
-                await cur.execute(spec.sql, spec.params)
+                if self._conn.pgconn.pipeline_status:
+                    # In pipeline mode a result arrives only at a sync point:
+                    # without one, `description` is still None and the rows
+                    # (and rowcount) are silently lost. Exiting a nested
+                    # pipeline block sends a Sync and collects the result.
+                    async with self._conn.pipeline():
+                        await cur.execute(spec.sql, spec.params)
+                else:
+                    await cur.execute(spec.sql, spec.params)
                 rows: list[Any] = await cur.fetchall() if cur.description else []
                 rowcount = cur.rowcount
                 if row_format == "tuple" and cur.description:

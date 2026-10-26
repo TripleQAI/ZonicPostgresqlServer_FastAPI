@@ -6,9 +6,10 @@
 #
 # Connection budget: one process per Lambda execution environment, and this
 # account allows at most 10 concurrent environments, so the worst case is
-# 10 x pool.max_size = 30 connections per datasource. Each datasource is a
-# separate Neon branch with its own compute, so each compute sees at most 30,
-# comfortably inside a Neon free-plan compute's connection limit.
+# 10 x pool.max_size = 30 connections per datasource. neondb and neondb_dev are
+# separate Neon branches with their own computes, so each sees at most 30;
+# agentruntime and agentobservability share one compute, which sees at most 60.
+# All are inside a Neon free-plan compute's connection limit.
 
 datasources:
   # --- neondb: Neon free plan -------------------------------------------------
@@ -44,6 +45,27 @@ datasources:
     pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
     stream: { itersize: 5000 }
 
+  # --- agentruntime / agentobservability: the Agent Runtime's database ---------
+  # Neon project `agent-build-langgraph`, branch `production`, database `neondb`,
+  # holding the agent_builder, agent_runtime and agent_observability schemas
+  # (ZonicAgentRuntimeBackend_Python_LangGraph, decision D-2). The names are the
+  # runtime's settings.gateway.datasources. Both currently point at the same compute,
+  # so it sees at most 10 x (3 + 3) = 60 connections, inside a free-plan compute's
+  # limit. Same tuning as above, for the same reasons.
+  - name: agentruntime
+    dsn: ${env:PGF_AGENTRUNTIME_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
+  - name: agentobservability
+    dsn: ${env:PGF_AGENTOBSERVABILITY_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
 resilience:
   retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
   circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
@@ -72,6 +94,13 @@ auth:
       # calls procedures, so it needs both actions.
       - subject: zonic-agent-builder
         datasources: [neondb, neondb_dev]
+        actions: [read, write]
+      # The Agent Runtime (ZonicAgentRuntimeBackend_Python_LangGraph) reads views and
+      # calls procedures on its own database. One rule per subject (later entries
+      # replace earlier ones), so builder-database access, if the runtime ever needs
+      # it, is added to this rule's datasources.
+      - subject: zonic-agent-runtime
+        datasources: [agentruntime, agentobservability]
         actions: [read, write]
 
 api:

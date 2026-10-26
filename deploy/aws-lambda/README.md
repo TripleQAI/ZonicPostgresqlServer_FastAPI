@@ -18,7 +18,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 |---|---|
 | `Dockerfile` | Service image plus the AWS Lambda Web Adapter 0.9.1; runtime dependencies only |
 | `deploy.sh` | Idempotent deployment: ECR repository, image build and push, IAM role, function, Function URL, smoke test |
-| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb` and `neondb_dev` datasources, token auth, small pools |
+| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb`, `neondb_dev`, `agentruntime` and `agentobservability` datasources, token auth, small pools |
 
 ## Cost
 
@@ -34,27 +34,33 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 
 - AWS CLI v2 with a working profile (default `your-aws-profile`), Docker with Buildx, Git Bash or Linux.
 - Credentials in AWS Secrets Manager: secret `zonic-postgresql-server/runtime`
-  (account `633160612720`, `us-east-1`) holds `PGF_NEON_DSN`, `PGF_NEON_DEV_DSN` and
-  `PGF_API_KEY_ZONIC_AGENT_BUILDER` as one JSON object. `deploy.sh` reads it first.
+  (account `633160612720`, `us-east-1`) holds `PGF_NEON_DSN`, `PGF_NEON_DEV_DSN`,
+  `PGF_AGENTRUNTIME_DSN`, `PGF_AGENTOBSERVABILITY_DSN`, `PGF_API_KEY_ZONIC_AGENT_BUILDER` and
+  `PGF_API_KEY_ZONIC_AGENT_RUNTIME` as one JSON object. `deploy.sh` reads it first and adds any
+  value it does not hold yet (from `.env` / `.env.lambda`), keeping the others.
   Read the values with
   `aws secretsmanager get-secret-value --secret-id zonic-postgresql-server/runtime --region us-east-1`.
-- Fallback when the secret does not exist: two Neon **direct** connection strings
+- Fallback when the secret does not hold a value: Neon **direct** connection strings
   (hosts without `-pooler`), saved in the gitignored repository-root `.env`; the
-  script then creates the secret from them on its first run:
+  script then stores them in the secret:
 
   ```
   PGF_NEON_DSN=postgresql://<user>:<password>@<endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
   PGF_NEON_DEV_DSN=postgresql://<user>:<password>@<dev-endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
+  PGF_AGENTRUNTIME_DSN=postgresql://<user>:<password>@<runtime-endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
+  PGF_AGENTOBSERVABILITY_DSN=...   # optional; defaults to PGF_AGENTRUNTIME_DSN
   ```
 
   | Datasource | Neon branch | Use |
   |---|---|---|
   | `neondb` | `production` | Demonstrations and real workflows |
   | `neondb_dev` | `dev` | Development and the builder's live test suite |
+  | `agentruntime`, `agentobservability` | `production` of project `agent-build-langgraph` | The Agent Runtime's schemas (`agent_runtime`, `agent_observability`, and its copy of `agent_builder`) |
 
   Both branches use Neon's default database `neondb`. The datasource names are only
   labels in `pgfoundation.lambda.yaml`; each DSN decides which branch is used.
-  `deploy.sh` stops if either variable is missing from both the secret and `.env`.
+  `deploy.sh` stops if `PGF_NEON_DSN`, `PGF_NEON_DEV_DSN` or `PGF_AGENTRUNTIME_DSN` is missing from both
+  the secret and `.env`.
 
 ## Deploy or redeploy
 
@@ -62,8 +68,9 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 bash deploy/aws-lambda/deploy.sh
 ```
 
-The first run creates the caller key (`PGF_API_KEY_ZONIC_AGENT_BUILDER`), stores it in
-the secret and in the gitignored `.env.lambda`, and prints the endpoint. Later runs build a new
+A caller key missing from both the secret and `.env.lambda` (`PGF_API_KEY_ZONIC_AGENT_BUILDER`,
+`PGF_API_KEY_ZONIC_AGENT_RUNTIME`) is generated and stored in both. Every caller in the policy needs
+its key, or the gateway refuses to start. The script prints the endpoint. Later runs build a new
 image and roll the function forward. The Lambda region defaults to the Neon
 endpoint's region.
 

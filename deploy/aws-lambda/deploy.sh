@@ -17,11 +17,16 @@
 #   Secret zonic-postgresql-server/runtime (JSON, account and region of the function):
 #     PGF_NEON_DSN                      Neon DIRECT connection string (production branch)
 #     PGF_NEON_DEV_DSN                  Neon DIRECT connection string (branch dev)
+#     PGF_AGENTRUNTIME_DSN              Agent Runtime database (datasource agentruntime)
+#     PGF_AGENTOBSERVABILITY_DSN        datasource agentobservability; defaults to PGF_AGENTRUNTIME_DSN
 #     PGF_API_KEY_ZONIC_AGENT_BUILDER   caller key
+#     PGF_API_KEY_ZONIC_AGENT_RUNTIME   caller key
 #   Fallback files (both gitignored by `.env` / `.env.*`):
-#     .env          PGF_NEON_DSN=..., PGF_NEON_DEV_DSN=...
-#     .env.lambda   PGF_API_KEY_ZONIC_AGENT_BUILDER=...   generated on first run
-#   When the secret does not exist yet, the script creates it from the values it used.
+#     .env          the DSNs
+#     .env.lambda   the caller keys; a missing key is generated
+#   The secret is created when missing and updated with any value it does not hold yet;
+#   keys it holds that this script does not use are kept.
+#   Every caller in config/pgfoundation.lambda.yaml needs its key, or the gateway refuses to start.
 #   Read it with: aws secretsmanager get-secret-value --secret-id zonic-postgresql-server/runtime
 #
 # Overridable environment variables:
@@ -43,6 +48,7 @@ MEMORY_MB=512
 TIMEOUT_S=60
 LOG_RETENTION_DAYS=14
 API_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_BUILDER
+RUNTIME_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_RUNTIME
 SECRET_ID="${SECRET_ID:-zonic-postgresql-server/runtime}"
 SECRET_REGION="${SECRET_REGION:-${AWS_REGION:-us-east-1}}"
 PY="$(command -v python3 || command -v python)"
@@ -92,7 +98,15 @@ if [ -z "$NEON_DEV_DSN" ]; then
   echo "PGF_NEON_DEV_DSN is missing from secret $SECRET_ID and from $ROOT/.env (Neon branch dev, datasource neondb_dev)" >&2
   exit 1
 fi
-for dsn in "$NEON_DSN" "$NEON_DEV_DSN"; do
+# Datasources agentruntime and agentobservability (the Agent Runtime's database).
+RUNTIME_DSN="$(get_var "$ROOT/.env" PGF_AGENTRUNTIME_DSN)"
+if [ -z "$RUNTIME_DSN" ]; then
+  echo "PGF_AGENTRUNTIME_DSN is missing from secret $SECRET_ID and from $ROOT/.env (datasource agentruntime)" >&2
+  exit 1
+fi
+OBSERVABILITY_DSN="$(get_var "$ROOT/.env" PGF_AGENTOBSERVABILITY_DSN)"
+OBSERVABILITY_DSN="${OBSERVABILITY_DSN:-$RUNTIME_DSN}"
+for dsn in "$NEON_DSN" "$NEON_DEV_DSN" "$RUNTIME_DSN" "$OBSERVABILITY_DSN"; do
   case "$dsn" in
     *-pooler.*) echo "warning: a DSN uses Neon's pooled endpoint; the direct endpoint is recommended" >&2 ;;
   esac
@@ -107,33 +121,46 @@ aws_() { aws --region "$REGION" "$@"; }
 # for local paths, so it is switched off only for these calls. No effect on Linux.
 aws_raw() { MSYS_NO_PATHCONV=1 aws --region "$REGION" "$@"; }
 
-API_KEY="$(get_var "$ROOT/.env.lambda" "$API_KEY_VAR")"
-KEY_GENERATED=0
-if [ -z "$API_KEY" ]; then
-  API_KEY="$(openssl rand -hex 32)"
-  KEY_GENERATED=1
-  printf '%s=%s\n' "$API_KEY_VAR" "$API_KEY" >> "$ROOT/.env.lambda"
-  log "generated a new caller key in .env.lambda ($API_KEY_VAR)"
-fi
-
-# Create the secret on first use, or store a newly generated key in it.
-if [ -z "$SECRET_JSON" ] || [ "$KEY_GENERATED" = 1 ]; then
-  SECRET_FILE="$(mktemp)"
-  NEON_DSN="$NEON_DSN" NEON_DEV_DSN="$NEON_DEV_DSN" API_KEY="$API_KEY" API_KEY_VAR="$API_KEY_VAR" "$PY" -c \
-    'import json, os; print(json.dumps({"PGF_NEON_DSN": os.environ["NEON_DSN"], "PGF_NEON_DEV_DSN": os.environ["NEON_DEV_DSN"], os.environ["API_KEY_VAR"]: os.environ["API_KEY"]}))' \
-    > "$SECRET_FILE"
-  SECRET_URI="file://$(native_path "$SECRET_FILE")"
-  if [ -z "$SECRET_JSON" ]; then
-    aws --region "$SECRET_REGION" secretsmanager create-secret --name "$SECRET_ID" \
-      --description "pgfoundation Lambda caller keys and Neon DSNs" --secret-string "$SECRET_URI" >/dev/null
-    log "created secret $SECRET_ID"
-  else
-    aws --region "$SECRET_REGION" secretsmanager put-secret-value --secret-id "$SECRET_ID" \
-      --secret-string "$SECRET_URI" >/dev/null
-    log "stored the new caller key in secret $SECRET_ID"
+# A caller key from the secret or .env.lambda; generated (and kept in .env.lambda) when missing.
+caller_key() {
+  local value
+  value="$(get_var "$ROOT/.env.lambda" "$1")"
+  if [ -z "$value" ]; then
+    value="$(openssl rand -hex 32)"
+    printf '%s=%s\n' "$1" "$value" >> "$ROOT/.env.lambda"
+    log "generated a new caller key in .env.lambda ($1)" >&2
   fi
-  rm -f "$SECRET_FILE"
+  printf '%s' "$value"
+}
+API_KEY="$(caller_key "$API_KEY_VAR")"
+RUNTIME_KEY="$(caller_key "$RUNTIME_KEY_VAR")"
+
+# Every value the function receives, as one JSON object (also the secret's content).
+export NEON_DSN NEON_DEV_DSN RUNTIME_DSN OBSERVABILITY_DSN API_KEY API_KEY_VAR RUNTIME_KEY RUNTIME_KEY_VAR
+VALUES_JSON="$("$PY" -c 'import json, os; e = os.environ; print(json.dumps({
+  "PGF_NEON_DSN": e["NEON_DSN"], "PGF_NEON_DEV_DSN": e["NEON_DEV_DSN"],
+  "PGF_AGENTRUNTIME_DSN": e["RUNTIME_DSN"], "PGF_AGENTOBSERVABILITY_DSN": e["OBSERVABILITY_DSN"],
+  e["API_KEY_VAR"]: e["API_KEY"], e["RUNTIME_KEY_VAR"]: e["RUNTIME_KEY"]}))')"
+
+# Create the secret on first use, or merge in values it does not hold yet.
+SECRET_FILE="$(mktemp)"
+SECRET_STATE="$(SECRET_JSON="$SECRET_JSON" VALUES_JSON="$VALUES_JSON" "$PY" -c '
+import json, os, sys
+current = json.loads(os.environ["SECRET_JSON"] or "{}")
+merged = {**current, **json.loads(os.environ["VALUES_JSON"])}
+open(sys.argv[1], "w", encoding="utf-8").write(json.dumps(merged))
+print("new" if not current else ("same" if merged == current else "changed"))' "$SECRET_FILE")"
+SECRET_URI="file://$(native_path "$SECRET_FILE")"
+if [ "$SECRET_STATE" = new ]; then
+  aws --region "$SECRET_REGION" secretsmanager create-secret --name "$SECRET_ID" \
+    --description "pgfoundation Lambda caller keys and Neon DSNs" --secret-string "$SECRET_URI" >/dev/null
+  log "created secret $SECRET_ID"
+elif [ "$SECRET_STATE" = changed ]; then
+  aws --region "$SECRET_REGION" secretsmanager put-secret-value --secret-id "$SECRET_ID" \
+    --secret-string "$SECRET_URI" >/dev/null
+  log "updated secret $SECRET_ID with new values"
 fi
+rm -f "$SECRET_FILE"
 
 ACCOUNT="$(aws_ sts get-caller-identity --query Account --output text)"
 REGISTRY="$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
@@ -174,8 +201,8 @@ ROLE_ARN="$(aws iam get-role --role-name "$ROLE" --query Role.Arn --output text)
 ENV_FILE="$(mktemp)"
 ERR_FILE="$(mktemp)"
 trap 'rm -f "$ENV_FILE" "$ERR_FILE"' EXIT
-NEON_DSN="$NEON_DSN" NEON_DEV_DSN="$NEON_DEV_DSN" API_KEY="$API_KEY" API_KEY_VAR="$API_KEY_VAR" "$PY" -c \
-  'import json, os; print(json.dumps({"Variables": {"PGF_NEON_DSN": os.environ["NEON_DSN"], "PGF_NEON_DEV_DSN": os.environ["NEON_DEV_DSN"], os.environ["API_KEY_VAR"]: os.environ["API_KEY"]}}))' \
+VALUES_JSON="$VALUES_JSON" "$PY" -c \
+  'import json, os; print(json.dumps({"Variables": json.loads(os.environ["VALUES_JSON"])}))' \
   > "$ENV_FILE"
 ENV_URI="file://$(native_path "$ENV_FILE")"
 
@@ -237,7 +264,8 @@ curl -sS --retry 3 --retry-all-errors --retry-delay 2 -m 30 -w '  [HTTP %{http_c
 cat <<EOF
 
 Endpoint:    $BASE
-Datasources: neondb (production branch), neondb_dev (branch dev)
-Caller key:  secret $SECRET_ID ($API_KEY_VAR), copy in $ROOT/.env.lambda
+Datasources: neondb (production branch), neondb_dev (branch dev),
+             agentruntime and agentobservability (Agent Runtime database)
+Caller keys: secret $SECRET_ID ($API_KEY_VAR, $RUNTIME_KEY_VAR), copies in $ROOT/.env.lambda
 Call with:   Authorization: Bearer <key>
 EOF

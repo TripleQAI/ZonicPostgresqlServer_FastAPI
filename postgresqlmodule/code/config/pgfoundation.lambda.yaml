@@ -8,8 +8,9 @@
 # account allows at most 10 concurrent environments, so the worst case is
 # 10 x pool.max_size = 30 connections per datasource. neondb and neondb_dev are
 # separate Neon branches with their own computes, so each sees at most 30;
-# agentruntime and agentobservability share one compute, which sees at most 60.
-# All are inside a Neon free-plan compute's connection limit.
+# agentruntime, agentobservability and agentbuilder share one compute, which sees
+# at most 90. All are inside a Neon free-plan compute's connection limit; lower a
+# max_size before adding another datasource on that compute.
 
 datasources:
   # --- neondb: Neon free plan -------------------------------------------------
@@ -66,6 +67,18 @@ datasources:
     pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
     stream: { itersize: 5000 }
 
+  # --- agentbuilder: the Agent Builder's workflows, in the same database -------
+  # Since 2026-10-26 the builder (Strands-visual-builder) saves its workflows in
+  # agent-build-langgraph's agent_builder schema, where the runtime reads them. Its
+  # own datasource keeps the builder's pool and admission limits apart from the
+  # runtime's. Same tuning as above, for the same reasons.
+  - name: agentbuilder
+    dsn: ${env:PGF_AGENTBUILDER_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
 resilience:
   retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
   circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
@@ -90,10 +103,11 @@ auth:
   policy:
     default: deny
     callers:
-      # The Agent Builder API (ZonicAgentBuilderServer_FastAPI) reads views and
-      # calls procedures, so it needs both actions.
+      # The Agent Builder (Strands-visual-builder, ZonicAgentBuilderServer_FastAPI) reads
+      # views and calls procedures, so it needs both actions. It uses agentbuilder;
+      # neondb and neondb_dev stay reachable for its earlier data.
       - subject: zonic-agent-builder
-        datasources: [neondb, neondb_dev]
+        datasources: [agentbuilder, neondb, neondb_dev]
         actions: [read, write]
       # The Agent Runtime (ZonicAgentRuntimeBackend_Python_LangGraph) reads views and
       # calls procedures on its own database. One rule per subject (later entries

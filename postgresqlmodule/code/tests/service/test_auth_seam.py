@@ -107,3 +107,57 @@ async def test_authorizer_receives_datasource_as_the_resource(settings):
 
     assert seen == [("read", "main"), ("write", "main")]  # action comes from the descriptor
     await foundation.aclose()
+
+
+async def test_batch_items_are_authorized_per_datasource(settings):
+    """`batch` admits the request, but each item must pass its unary route's rule:
+    a caller allowed `batch` and `main` cannot reach another datasource through it."""
+    seen: list[tuple[str, str]] = []
+    allowed = {("write", "batch"), ("read", "main")}
+
+    class Policy:
+        async def authorize(self, principal, action, resource):
+            seen.append((action, resource))
+            return (action, resource) in allowed
+
+    class Anyone:
+        async def authenticate(self, request):
+            return Principal(subject="runtime")
+
+    calls: list[object] = []
+    s = load_settings({"datasources": [{"name": "main", "dsn": "postgresql://x/main"}]})
+    foundation = await DataFoundation.from_settings(
+        s,
+        driver=FakeDriver(
+            lambda spec: calls.append(spec) or ResultSet(rows=[{"id": 1}], rowcount=1)
+        ),
+    )
+    app = create_app(settings, foundation=foundation)
+    app.state.auth_gate = AuthGate(enabled=True, authenticator=Anyone(), authorizer=Policy())
+
+    item = {"id": "a", "datasource": "main", "op": "view", "payload": VIEW}
+    async with app.router.lifespan_context(app), await _client(app) as c:
+        ok = await c.post("/v1/batch", json={"items": [item]})
+        denied = await c.post(
+            "/v1/batch",
+            json={"items": [item, {**item, "id": "b", "datasource": "other"}]},
+        )
+        writes = await c.post(
+            "/v1/batch",
+            json={
+                "items": [
+                    {
+                        "id": "c",
+                        "datasource": "main",
+                        "op": "procedure",
+                        "payload": {"name": "sp_x", "args": []},
+                    }
+                ]
+            },
+        )
+
+    assert ok.status_code == 200 and ok.json()["ok_count"] == 1
+    assert denied.status_code == 403 and writes.status_code == 403
+    assert ("read", "other") in seen and ("write", "main") in seen
+    assert len(calls) == 1  # the refused batches never reached the database
+    await foundation.aclose()

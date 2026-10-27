@@ -116,6 +116,13 @@ auth:
       - subject: zonic-agent-runtime
         datasources: [agentruntime, agentobservability]
         actions: [read, write]
+      # The Node Agent Runtime (ZonicAgentRuntimeServer_Nodejs) uses only Neon project
+      # agent-build-run: on branch dev, the builder's agent_builder views and its own
+      # agent_runtime and agent_observability schemas. `batch` admits /v1/batch, whose
+      # items must each pass this rule's datasources too (security/gate.py).
+      - subject: zonic-agent-runtime-node
+        datasources: [neondb_dev, batch]
+        actions: [read, write]
 
 api:
   docs_enabled: false       # no free map of the surface on a public endpoint

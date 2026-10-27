@@ -62,6 +62,15 @@ class AuthGate:
             self._metrics.incr("pgf_auth_checks_total", 1, action=action, result="unauthenticated")
             raise AuthenticationError("authentication required")
 
+        await self.require(principal, action, resource)
+        return principal
+
+    async def require(self, principal: Principal, action: str, resource: str) -> None:
+        """AuthZ alone, for a principal ``check`` already authenticated: each batch
+        item must pass the same ``action`` x ``datasource`` rule as its unary route."""
+        if not self.enabled:
+            return
+
         if not await self._authz.authorize(principal, action, resource):
             # `subject` is deliberately NOT a metric label — it is unbounded in
             # principle and belongs in the log event instead (doc 11 §11.9).
@@ -71,7 +80,6 @@ class AuthGate:
             raise AuthorizationError(f"not permitted: {action} {resource}")
 
         self._metrics.incr("pgf_auth_checks_total", 1, action=action, result="allow")
-        return principal
 
 
 def build_auth_gate(

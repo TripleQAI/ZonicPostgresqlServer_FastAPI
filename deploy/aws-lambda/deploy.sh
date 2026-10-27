@@ -22,6 +22,7 @@
 #     PGF_AGENTBUILDER_DSN              datasource agentbuilder (the builder's workflows); defaults to PGF_AGENTRUNTIME_DSN
 #     PGF_API_KEY_ZONIC_AGENT_BUILDER   caller key
 #     PGF_API_KEY_ZONIC_AGENT_RUNTIME   caller key
+#     PGF_API_KEY_ZONIC_AGENT_RUNTIME_NODE  caller key (the Node runtime, ZonicAgentRuntimeServer_Nodejs)
 #   Fallback files (both gitignored by `.env` / `.env.*`):
 #     .env          the DSNs
 #     .env.lambda   the caller keys; a missing key is generated
@@ -50,6 +51,7 @@ TIMEOUT_S=60
 LOG_RETENTION_DAYS=14
 API_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_BUILDER
 RUNTIME_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_RUNTIME
+NODE_RUNTIME_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_RUNTIME_NODE
 SECRET_ID="${SECRET_ID:-zonic-postgresql-server/runtime}"
 SECRET_REGION="${SECRET_REGION:-${AWS_REGION:-us-east-1}}"
 PY="$(command -v python3 || command -v python)"
@@ -140,14 +142,16 @@ caller_key() {
 }
 API_KEY="$(caller_key "$API_KEY_VAR")"
 RUNTIME_KEY="$(caller_key "$RUNTIME_KEY_VAR")"
+NODE_RUNTIME_KEY="$(caller_key "$NODE_RUNTIME_KEY_VAR")"
 
 # Every value the function receives, as one JSON object (also the secret's content).
-export NEON_DSN NEON_DEV_DSN RUNTIME_DSN OBSERVABILITY_DSN BUILDER_DSN API_KEY API_KEY_VAR RUNTIME_KEY RUNTIME_KEY_VAR
+export NEON_DSN NEON_DEV_DSN RUNTIME_DSN OBSERVABILITY_DSN BUILDER_DSN API_KEY API_KEY_VAR RUNTIME_KEY RUNTIME_KEY_VAR NODE_RUNTIME_KEY NODE_RUNTIME_KEY_VAR
 VALUES_JSON="$("$PY" -c 'import json, os; e = os.environ; print(json.dumps({
   "PGF_NEON_DSN": e["NEON_DSN"], "PGF_NEON_DEV_DSN": e["NEON_DEV_DSN"],
   "PGF_AGENTRUNTIME_DSN": e["RUNTIME_DSN"], "PGF_AGENTOBSERVABILITY_DSN": e["OBSERVABILITY_DSN"],
   "PGF_AGENTBUILDER_DSN": e["BUILDER_DSN"],
-  e["API_KEY_VAR"]: e["API_KEY"], e["RUNTIME_KEY_VAR"]: e["RUNTIME_KEY"]}))')"
+  e["API_KEY_VAR"]: e["API_KEY"], e["RUNTIME_KEY_VAR"]: e["RUNTIME_KEY"],
+  e["NODE_RUNTIME_KEY_VAR"]: e["NODE_RUNTIME_KEY"]}))')"
 
 # Create the secret on first use, or merge in values it does not hold yet.
 SECRET_FILE="$(mktemp)"
@@ -273,6 +277,7 @@ cat <<EOF
 Endpoint:    $BASE
 Datasources: neondb (production branch), neondb_dev (branch dev),
              agentruntime, agentobservability and agentbuilder (Agent Runtime database)
-Caller keys: secret $SECRET_ID ($API_KEY_VAR, $RUNTIME_KEY_VAR), copies in $ROOT/.env.lambda
+Caller keys: secret $SECRET_ID ($API_KEY_VAR, $RUNTIME_KEY_VAR,
+             $NODE_RUNTIME_KEY_VAR), copies in $ROOT/.env.lambda
 Call with:   Authorization: Bearer <key>
 EOF

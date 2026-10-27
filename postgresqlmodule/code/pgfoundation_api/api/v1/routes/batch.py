@@ -22,7 +22,7 @@ from ....batch.strategies.parallel import ParallelStrategy
 from ....batch.strategies.sequential import SequentialPipelineStrategy
 from ....batch.strategies.transactional import TransactionalStrategy
 from ....bootstrap.deps import get_foundation, get_metrics, get_settings
-from ....security.gate import Principal, authorize_global
+from ....security.gate import AuthGate, Principal, authorize_global, get_auth_gate
 from ....settings import ServiceSettings
 from ..operations import OPERATION_BY_ID
 from ..schemas.batch import BatchRequest, BatchResult
@@ -66,7 +66,8 @@ async def run_batch(
     settings: Annotated[ServiceSettings, Depends(get_settings)],
     limiter: Annotated[AdmissionLimiter, Depends(get_limiter)],
     metrics: Annotated[Any, Depends(get_metrics)],
-    principal: Annotated[Principal, Depends(authorize_global("write", "batch"))],  # noqa: ARG001
+    principal: Annotated[Principal, Depends(authorize_global("write", "batch"))],
+    gate: Annotated[AuthGate, Depends(get_auth_gate)],
 ) -> BatchResult:
     cfg = settings.batch
     if not cfg.enabled:
@@ -81,6 +82,14 @@ async def run_batch(
     ids = [item.id for item in body.items]
     if len(set(ids)) != len(ids):
         raise QueryError("batch item ids must be unique — results correlate by id")
+
+    # `batch` admits the request; each item must also pass its unary route's rule
+    # (action x datasource), or a batch would reach datasources the caller may not.
+    # Refused whole, before any database work; an unknown op fails per item later.
+    for item in body.items:
+        spec = OPERATION_BY_ID.get(item.op)
+        if spec is not None:
+            await gate.require(principal, spec.action, item.datasource)
 
     mode = body.mode or cfg.default_mode
     # Clamp, never trust: a client cannot raise its own concurrency ceiling.

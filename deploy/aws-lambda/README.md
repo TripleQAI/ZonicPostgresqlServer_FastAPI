@@ -36,7 +36,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 - Credentials in AWS Secrets Manager: secret `zonic-postgresql-server/runtime`
   (account `633160612720`, `us-east-1`) holds `PGF_NEON_DSN`, `PGF_NEON_DEV_DSN`,
   `PGF_AGENTRUNTIME_DSN`, `PGF_AGENTOBSERVABILITY_DSN`, `PGF_API_KEY_ZONIC_AGENT_BUILDER` and
-  `PGF_API_KEY_ZONIC_AGENT_RUNTIME` as one JSON object. `deploy.sh` reads it first and adds any
+  `PGF_API_KEY_ZONIC_AGENT_RUNTIME` and `PGF_API_KEY_ZONIC_AGENT_RUNTIME_NODE` as one JSON object. `deploy.sh` reads it first and adds any
   value it does not hold yet (from `.env` / `.env.lambda`), keeping the others.
   Read the values with
   `aws secretsmanager get-secret-value --secret-id zonic-postgresql-server/runtime --region us-east-1`.
@@ -54,7 +54,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
   | Datasource | Neon branch | Use |
   |---|---|---|
   | `neondb` | `production` | Demonstrations and real workflows |
-  | `neondb_dev` | `dev` | Development and the builder's live test suite |
+  | `neondb_dev` | `dev` | Development, the builder's live test suite, and the Node runtime (`zonic-agent-runtime-node`: `agent_builder`, `agent_runtime`, `agent_observability`) |
   | `agentruntime`, `agentobservability` | `production` of project `agent-build-langgraph` | The Agent Runtime's schemas (`agent_runtime`, `agent_observability`, and its copy of `agent_builder`) |
 
   Both branches use Neon's default database `neondb`. The datasource names are only
@@ -69,7 +69,7 @@ bash deploy/aws-lambda/deploy.sh
 ```
 
 A caller key missing from both the secret and `.env.lambda` (`PGF_API_KEY_ZONIC_AGENT_BUILDER`,
-`PGF_API_KEY_ZONIC_AGENT_RUNTIME`) is generated and stored in both. Every caller in the policy needs
+`PGF_API_KEY_ZONIC_AGENT_RUNTIME`, `PGF_API_KEY_ZONIC_AGENT_RUNTIME_NODE`) is generated and stored in both. Every caller in the policy needs
 its key, or the gateway refuses to start. The script prints the endpoint. Later runs build a new
 image and roll the function forward. The Lambda region defaults to the Neon
 endpoint's region.

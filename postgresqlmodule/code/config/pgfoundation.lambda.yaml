@@ -112,9 +112,11 @@ auth:
       # The Agent Runtime (ZonicAgentRuntimeBackend_Python_LangGraph) reads views and
       # calls procedures on its own database. One rule per subject (later entries
       # replace earlier ones), so builder-database access, if the runtime ever needs
-      # it, is added to this rule's datasources.
+      # it, is added to this rule's datasources. `batch` admits /v1/batch (a warm turn
+      # starts with one sequential batch); each item must still pass this rule's
+      # datasources (security/gate.py).
       - subject: zonic-agent-runtime
-        datasources: [agentruntime, agentobservability]
+        datasources: [agentruntime, agentobservability, batch]
         actions: [read, write]
       # The Node Agent Runtime (ZonicAgentRuntimeServer_Nodejs) uses only Neon project
       # agent-build-run: on branch dev, the builder's agent_builder views and its own

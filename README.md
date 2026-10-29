@@ -25,6 +25,23 @@ A rebuild of the PostgreSQL Database Foundation Server (`pgfoundation`) on
 
 ---
 
+## Nebius x NVIDIA Global AI Hackathon
+
+This repository is part of the Zonic agent platform, our entry in the Nebius x NVIDIA Global AI Hackathon (Best Apps and Agents track). The platform's agents run on NVIDIA Nemotron models served by Nebius Token Factory. How that is wired, and which model does what, is in the runtime's README: [NVIDIA Nemotron on Nebius Token Factory](https://github.com/TripleQAI/ZonicAgentRuntimeBackend_Python_LangGraph#nvidia-nemotron-on-nebius-token-factory).
+
+**This repository's part:** Every service stores its data through this gateway in Neon PostgreSQL: the builder's workflows and the runtime's runs, sessions and traces, which include each Nemotron call's token usage.
+
+**Live demo:** the chat at https://dev.tripleq.ai/agent-runtime-lg and the agent builder at https://dev.tripleq.ai/agent-visual-builder-lg/workflows. Both sign in with Amazon Cognito; the test accounts are in the hackathon submission's testing instructions.
+
+| Repository | Role |
+|---|---|
+| [ZonicAgentBuilderUI_NextJS](https://github.com/TripleQAI/ZonicAgentBuilderUI_NextJS) | The visual builder: design a workflow and pick a Nemotron model for each node |
+| [ZonicAgentBuilderServer_FastAPI](https://github.com/TripleQAI/ZonicAgentBuilderServer_FastAPI) | The builder's API: validation, import and export, the node registry and model options |
+| [ZonicAgentRuntimeBackend_Python_LangGraph](https://github.com/TripleQAI/ZonicAgentRuntimeBackend_Python_LangGraph) | Runs the workflows on LangGraph and calls Nemotron through Token Factory |
+| [ZonicAgentRuntimeUI_NextJS_For_LangGraph](https://github.com/TripleQAI/ZonicAgentRuntimeUI_NextJS_For_LangGraph) | The chat app people use the agents in |
+| [ZonicMCPServer_FastAPI](https://github.com/TripleQAI/ZonicMCPServer_FastAPI) | The agents' tools over open data |
+| **ZonicPostgresqlServer_FastAPI** (this repository) | The PostgreSQL gateway every service stores data through (Neon) |
+
 ## Current deployment
 
 Verified on 26 October 2026: the function is active, `GET /ready` reports all five datasources healthy, and the caller keys reach only their own datasources.
@@ -109,3 +126,7 @@ The three sections that carry most of the weight:
 | **P3** | Streaming (NDJSON/SSE), interval, fetch-since, copy, execute-many | Flat memory over a 10M-row stream; disconnect releases the connection |
 | **P4** | Concurrency hardening | Chaos suite green; no leaks in a soak run |
 | **P5** | Performance & operations | [07 §7.9](documentations/07-performance.md) budgets met and CI-gated |
+
+## License
+
+Licensed under the Apache License 2.0; see [LICENSE](LICENSE).

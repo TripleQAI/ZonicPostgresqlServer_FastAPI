@@ -9,9 +9,9 @@
 # 10 x pool.max_size = 30 connections per datasource. neondb and neondb_dev are
 # separate Neon branches with their own computes, so each sees at most 30;
 # agentruntime, agentobservability and agentbuilder share one compute, which sees
-# at most 90; tripleq_synth and tripleq_synth_dev are separate branches of their
-# own project, so each sees at most 30. All are inside a Neon free-plan compute's
-# connection limit; lower a max_size before adding another datasource on a compute.
+# at most 90; tripleq_synth_dev is the dev branch of project ui-template-core, its own
+# compute, so it sees at most 30 (60 once the template platform's datasources join it). All are inside a Neon free-plan
+# compute's connection limit; lower a max_size before adding another datasource on a compute.
 
 datasources:
   # --- neondb: Neon free plan -------------------------------------------------
@@ -80,19 +80,14 @@ datasources:
     pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
     stream: { itersize: 5000 }
 
-  # --- tripleq_synth / tripleq_synth_dev: the synthetic data pipeline ----------
-  # Neon project `synthetic-data-pipeline` (ZonicSyntheticDataPipeline_Fullstack),
-  # database `neondb`, schema `tripleq_synth`: branch `production` is tripleq_synth,
-  # branch `dev` is tripleq_synth_dev. Each DSN logs in as the pipeline's own
-  # application role, which can only read its views and execute its procedures.
+  # --- tripleq_synth_dev: the synthetic data pipeline ---------------------------
+  # Neon project `ui-template-core` (orange-wind-33402638), shared with the template
+  # platform, schema `tripleq_synth` (ZonicSyntheticDataPipeline_Fullstack): branch
+  # `dev` is tripleq_synth_dev. Datasource tripleq_synth (branch `production`) is added
+  # once the schema is applied there. The DSN logs in as the pipeline's own
+  # application role, tripleq_synth_app, which can only read its
+  # views and execute its procedures, never the platform's tripleq_ai_ui schema.
   # Same tuning as above, for the same reasons.
-  - name: tripleq_synth
-    dsn: ${env:PGF_TRIPLEQ_SYNTH_DSN}
-    role: standalone
-    statement_timeout_ms: 30000
-    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
-    stream: { itersize: 5000 }
-
   - name: tripleq_synth_dev
     dsn: ${env:PGF_TRIPLEQ_SYNTH_DEV_DSN}
     role: standalone
@@ -151,7 +146,7 @@ auth:
       # Agent database. `batch` admits /v1/batch (the worker claims a job and reads its
       # lease in one transactional batch); each item must still pass this rule's datasources.
       - subject: zonic-synthetic-pipeline
-        datasources: [tripleq_synth, tripleq_synth_dev, batch]
+        datasources: [tripleq_synth_dev, batch]
         actions: [read, write]
 
 api:

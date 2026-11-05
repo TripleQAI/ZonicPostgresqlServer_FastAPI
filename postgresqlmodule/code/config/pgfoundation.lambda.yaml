@@ -9,8 +9,9 @@
 # 10 x pool.max_size = 30 connections per datasource. neondb and neondb_dev are
 # separate Neon branches with their own computes, so each sees at most 30;
 # agentruntime, agentobservability and agentbuilder share one compute, which sees
-# at most 90. All are inside a Neon free-plan compute's connection limit; lower a
-# max_size before adding another datasource on that compute.
+# at most 90; tripleq_synth and tripleq_synth_dev are separate branches of their
+# own project, so each sees at most 30. All are inside a Neon free-plan compute's
+# connection limit; lower a max_size before adding another datasource on a compute.
 
 datasources:
   # --- neondb: Neon free plan -------------------------------------------------
@@ -79,6 +80,26 @@ datasources:
     pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
     stream: { itersize: 5000 }
 
+  # --- tripleq_synth / tripleq_synth_dev: the synthetic data pipeline ----------
+  # Neon project `synthetic-data-pipeline` (ZonicSyntheticDataPipeline_Fullstack),
+  # database `neondb`, schema `tripleq_synth`: branch `production` is tripleq_synth,
+  # branch `dev` is tripleq_synth_dev. Each DSN logs in as the pipeline's own
+  # application role, which can only read its views and execute its procedures.
+  # Same tuning as above, for the same reasons.
+  - name: tripleq_synth
+    dsn: ${env:PGF_TRIPLEQ_SYNTH_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
+  - name: tripleq_synth_dev
+    dsn: ${env:PGF_TRIPLEQ_SYNTH_DEV_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
 resilience:
   retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
   circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
@@ -124,6 +145,13 @@ auth:
       # items must each pass this rule's datasources too (security/gate.py).
       - subject: zonic-agent-runtime-node
         datasources: [neondb_dev, batch]
+        actions: [read, write]
+      # The synthetic data pipeline (ZonicSyntheticDataPipeline_Fullstack: synth-api and
+      # synth-worker) reads views and calls procedures in its own project only, never an
+      # Agent database. `batch` admits /v1/batch (the worker claims a job and reads its
+      # lease in one transactional batch); each item must still pass this rule's datasources.
+      - subject: zonic-synthetic-pipeline
+        datasources: [tripleq_synth, tripleq_synth_dev, batch]
         actions: [read, write]
 
 api:

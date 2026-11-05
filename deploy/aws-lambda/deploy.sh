@@ -20,7 +20,6 @@
 #     PGF_AGENTRUNTIME_DSN              Agent Runtime database (datasource agentruntime)
 #     PGF_AGENTOBSERVABILITY_DSN        datasource agentobservability; defaults to PGF_AGENTRUNTIME_DSN
 #     PGF_AGENTBUILDER_DSN              datasource agentbuilder (the builder's workflows); defaults to PGF_AGENTRUNTIME_DSN
-#     PGF_TRIPLEQ_SYNTH_DSN             datasource tripleq_synth (synthetic data pipeline, branch production)
 #     PGF_TRIPLEQ_SYNTH_DEV_DSN         datasource tripleq_synth_dev (synthetic data pipeline, branch dev)
 #     PGF_API_KEY_ZONIC_AGENT_BUILDER   caller key
 #     PGF_API_KEY_ZONIC_AGENT_RUNTIME   caller key
@@ -118,18 +117,13 @@ OBSERVABILITY_DSN="${OBSERVABILITY_DSN:-$RUNTIME_DSN}"
 # Datasource agentbuilder: the builder's workflows, in the same database by default.
 BUILDER_DSN="$(get_var "$ROOT/.env" PGF_AGENTBUILDER_DSN)"
 BUILDER_DSN="${BUILDER_DSN:-$RUNTIME_DSN}"
-# Datasources tripleq_synth and tripleq_synth_dev: Neon project synthetic-data-pipeline.
-SYNTH_DSN="$(get_var "$ROOT/.env" PGF_TRIPLEQ_SYNTH_DSN)"
-if [ -z "$SYNTH_DSN" ]; then
-  echo "PGF_TRIPLEQ_SYNTH_DSN is missing from secret $SECRET_ID and from $ROOT/.env (Neon project synthetic-data-pipeline, branch production, datasource tripleq_synth)" >&2
-  exit 1
-fi
+# Datasource tripleq_synth_dev: Neon project ui-template-core, branch dev, schema tripleq_synth.
 SYNTH_DEV_DSN="$(get_var "$ROOT/.env" PGF_TRIPLEQ_SYNTH_DEV_DSN)"
 if [ -z "$SYNTH_DEV_DSN" ]; then
-  echo "PGF_TRIPLEQ_SYNTH_DEV_DSN is missing from secret $SECRET_ID and from $ROOT/.env (Neon project synthetic-data-pipeline, branch dev, datasource tripleq_synth_dev)" >&2
+  echo "PGF_TRIPLEQ_SYNTH_DEV_DSN is missing from secret $SECRET_ID and from $ROOT/.env (Neon project ui-template-core, branch dev, datasource tripleq_synth_dev)" >&2
   exit 1
 fi
-for dsn in "$NEON_DSN" "$NEON_DEV_DSN" "$RUNTIME_DSN" "$OBSERVABILITY_DSN" "$BUILDER_DSN" "$SYNTH_DSN" "$SYNTH_DEV_DSN"; do
+for dsn in "$NEON_DSN" "$NEON_DEV_DSN" "$RUNTIME_DSN" "$OBSERVABILITY_DSN" "$BUILDER_DSN" "$SYNTH_DEV_DSN"; do
   case "$dsn" in
     *-pooler.*) echo "warning: a DSN uses Neon's pooled endpoint; the direct endpoint is recommended" >&2 ;;
   esac
@@ -161,12 +155,12 @@ NODE_RUNTIME_KEY="$(caller_key "$NODE_RUNTIME_KEY_VAR")"
 SYNTH_KEY="$(caller_key "$SYNTH_KEY_VAR")"
 
 # Every value the function receives, as one JSON object (also the secret's content).
-export NEON_DSN NEON_DEV_DSN RUNTIME_DSN OBSERVABILITY_DSN BUILDER_DSN SYNTH_DSN SYNTH_DEV_DSN API_KEY API_KEY_VAR RUNTIME_KEY RUNTIME_KEY_VAR NODE_RUNTIME_KEY NODE_RUNTIME_KEY_VAR SYNTH_KEY SYNTH_KEY_VAR
+export NEON_DSN NEON_DEV_DSN RUNTIME_DSN OBSERVABILITY_DSN BUILDER_DSN SYNTH_DEV_DSN API_KEY API_KEY_VAR RUNTIME_KEY RUNTIME_KEY_VAR NODE_RUNTIME_KEY NODE_RUNTIME_KEY_VAR SYNTH_KEY SYNTH_KEY_VAR
 VALUES_JSON="$("$PY" -c 'import json, os; e = os.environ; print(json.dumps({
   "PGF_NEON_DSN": e["NEON_DSN"], "PGF_NEON_DEV_DSN": e["NEON_DEV_DSN"],
   "PGF_AGENTRUNTIME_DSN": e["RUNTIME_DSN"], "PGF_AGENTOBSERVABILITY_DSN": e["OBSERVABILITY_DSN"],
   "PGF_AGENTBUILDER_DSN": e["BUILDER_DSN"],
-  "PGF_TRIPLEQ_SYNTH_DSN": e["SYNTH_DSN"], "PGF_TRIPLEQ_SYNTH_DEV_DSN": e["SYNTH_DEV_DSN"],
+  "PGF_TRIPLEQ_SYNTH_DEV_DSN": e["SYNTH_DEV_DSN"],
   e["API_KEY_VAR"]: e["API_KEY"], e["RUNTIME_KEY_VAR"]: e["RUNTIME_KEY"],
   e["NODE_RUNTIME_KEY_VAR"]: e["NODE_RUNTIME_KEY"], e["SYNTH_KEY_VAR"]: e["SYNTH_KEY"]}))')"
 
@@ -294,7 +288,7 @@ cat <<EOF
 Endpoint:    $BASE
 Datasources: neondb (production branch), neondb_dev (branch dev),
              agentruntime, agentobservability and agentbuilder (Agent Runtime database),
-             tripleq_synth and tripleq_synth_dev (synthetic data pipeline)
+             tripleq_synth_dev (synthetic data pipeline)
 Caller keys: secret $SECRET_ID ($API_KEY_VAR, $RUNTIME_KEY_VAR,
              $NODE_RUNTIME_KEY_VAR, $SYNTH_KEY_VAR), copies in $ROOT/.env.lambda
 Call with:   Authorization: Bearer <key>

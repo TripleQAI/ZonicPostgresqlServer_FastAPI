@@ -18,7 +18,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 |---|---|
 | `Dockerfile` | Service image plus the AWS Lambda Web Adapter 0.9.1; runtime dependencies only |
 | `deploy.sh` | Idempotent deployment: ECR repository, image build and push, IAM role, function, Function URL, smoke test |
-| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb`, `neondb_dev`, `agentruntime`, `agentobservability`, `agentbuilder`, `tripleq_synth` and `tripleq_synth_dev` datasources, token auth, small pools |
+| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb`, `neondb_dev`, `agentruntime`, `agentobservability`, `agentbuilder` and `tripleq_synth_dev` datasources, token auth, small pools |
 
 ## Cost
 
@@ -35,7 +35,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 - AWS CLI v2 with a working profile (default `your-aws-profile`), Docker with Buildx, Git Bash or Linux.
 - Credentials in AWS Secrets Manager: secret `zonic-postgresql-server/runtime`
   (account `633160612720`, `us-east-1`) holds `PGF_NEON_DSN`, `PGF_NEON_DEV_DSN`,
-  `PGF_AGENTRUNTIME_DSN`, `PGF_AGENTOBSERVABILITY_DSN`, `PGF_TRIPLEQ_SYNTH_DSN`,
+  `PGF_AGENTRUNTIME_DSN`, `PGF_AGENTOBSERVABILITY_DSN`,
   `PGF_TRIPLEQ_SYNTH_DEV_DSN`, `PGF_API_KEY_ZONIC_AGENT_BUILDER`,
   `PGF_API_KEY_ZONIC_AGENT_RUNTIME`, `PGF_API_KEY_ZONIC_AGENT_RUNTIME_NODE` and
   `PGF_API_KEY_ZONIC_SYNTHETIC_PIPELINE` as one JSON object. `deploy.sh` reads it first and adds any
@@ -51,8 +51,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
   PGF_NEON_DEV_DSN=postgresql://<user>:<password>@<dev-endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
   PGF_AGENTRUNTIME_DSN=postgresql://<user>:<password>@<runtime-endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
   PGF_AGENTOBSERVABILITY_DSN=...   # optional; defaults to PGF_AGENTRUNTIME_DSN
-  PGF_TRIPLEQ_SYNTH_DSN=postgresql://tripleq_synth_app:<password>@<endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
-  PGF_TRIPLEQ_SYNTH_DEV_DSN=postgresql://tripleq_synth_app:<password>@<dev-endpoint>.<region>.aws.neon.tech/neondb?sslmode=require
+  PGF_TRIPLEQ_SYNTH_DEV_DSN=postgresql://tripleq_synth_app:<password>@<ui-template-core dev endpoint>.<region>.aws.neon.tech/<database>?sslmode=require
   ```
 
   | Datasource | Neon branch | Use |
@@ -60,15 +59,16 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
   | `neondb` | `production` | Demonstrations and real workflows |
   | `neondb_dev` | `dev` | Development, the builder's live test suite, and the Node runtime (`zonic-agent-runtime-node`: `agent_builder`, `agent_runtime`, `agent_observability`) |
   | `agentruntime`, `agentobservability` | `production` of project `agent-build-langgraph` | The Agent Runtime's schemas (`agent_runtime`, `agent_observability`, and its copy of `agent_builder`) |
-  | `tripleq_synth` | `production` of project `synthetic-data-pipeline` | The synthetic data pipeline's metadata (schema `tripleq_synth`); caller `zonic-synthetic-pipeline` only |
-  | `tripleq_synth_dev` | `dev` of project `synthetic-data-pipeline` | The pipeline's development and live test suite |
+  | `tripleq_synth_dev` | `dev` of project `ui-template-core` | The synthetic data pipeline's metadata (schema `tripleq_synth`); caller `zonic-synthetic-pipeline` only. Its `production` datasource `tripleq_synth` is added once the schema is applied there |
 
   Both branches use Neon's default database `neondb`. The datasource names are only
   labels in `pgfoundation.lambda.yaml`; each DSN decides which branch is used.
   `deploy.sh` stops if `PGF_NEON_DSN`, `PGF_NEON_DEV_DSN`, `PGF_AGENTRUNTIME_DSN`,
-  `PGF_TRIPLEQ_SYNTH_DSN` or `PGF_TRIPLEQ_SYNTH_DEV_DSN` is missing from both the secret and `.env`.
+  or `PGF_TRIPLEQ_SYNTH_DEV_DSN` is missing from both the secret and `.env`.
   The pipeline's DSNs log in as its application role `tripleq_synth_app`, created with SQL by
   its `infrastructure/neon` scripts, which may only read its views and execute its procedures.
+  Its schema `tripleq_synth` sits beside the template platform's `tripleq_ai_ui` in project
+  `ui-template-core`; neither application role can reach the other's schema.
 
 ## Deploy or redeploy
 
@@ -127,12 +127,12 @@ configuration:
 
 ```
 SYNTH_PGFOUNDATION_BASE_URL=<Function URL without the trailing slash>
-SYNTH_PGFOUNDATION_DATASOURCE=tripleq_synth_dev   # tripleq_synth for production
+SYNTH_PGFOUNDATION_DATASOURCE=tripleq_synth_dev
 SYNTH_PGFOUNDATION_SCHEMA=tripleq_synth
 SYNTH_PGFOUNDATION_KEY=<PGF_API_KEY_ZONIC_SYNTHETIC_PIPELINE>
 ```
 
-Its key reaches only `tripleq_synth`, `tripleq_synth_dev` and `/v1/batch`; it cannot read or
+Its key reaches only `tripleq_synth_dev` and `/v1/batch`; it cannot read or
 write any Agent datasource. Install the pipeline's schema on `dev` first with its
 `infrastructure/neon/run_all.sql`, the same way as the builder's scripts above.
 

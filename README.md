@@ -52,10 +52,10 @@ Verified on 26 October 2026: the function is active, `GET /ready` reports all fi
 | Function | `zonic-postgresql-server` (container image, arm64, 512 MB, 60-second timeout) |
 | Public endpoint | Lambda Function URL `https://sdyvf4y53x524cwgdisy2qyfqy0bgjkm.lambda-url.us-east-1.on.aws/` |
 | Endpoint authentication | The Function URL is open at the AWS level (`AuthType NONE`, `RESPONSE_STREAM`); every call needs the gateway's caller key as `Authorization: Bearer <key>` |
-| Callers | `zonic-agent-builder` (read and write on `agentbuilder`, `neondb`, `neondb_dev`); `zonic-agent-runtime` (read and write on `agentruntime`, `agentobservability`, plus `batch`); `zonic-agent-runtime-node` (read and write on `neondb_dev`, plus `batch`) |
+| Callers | `zonic-agent-builder` (read and write on `agentbuilder`, `neondb`, `neondb_dev`); `zonic-agent-runtime` (read and write on `agentruntime`, `agentobservability`, plus `batch`); `zonic-agent-runtime-node` (read and write on `neondb_dev`, plus `batch`); `zonic-synthetic-pipeline` (read and write on `tripleq_synth`, `tripleq_synth_dev`, plus `batch`; in configuration, not yet deployed) |
 | Container image | ECR repository `zonic-postgresql-server` |
 | Last deployment | 26 October 2026 (moved from account `633160612720`, whose deployment was deleted; datasources `agentruntime` and `agentobservability` added) |
-| Database | Neon project `rough-wave-74333079`: branch `production` is datasource `neondb`; branch `dev` is datasource `neondb_dev`. Neon project `agent-build-langgraph`, branch `production`: datasources `agentruntime`, `agentobservability` and `agentbuilder` (the builder's workflows since 26 October 2026) |
+| Database | Neon project `rough-wave-74333079`: branch `production` is datasource `neondb`; branch `dev` is datasource `neondb_dev`. Neon project `agent-build-langgraph`, branch `production`: datasources `agentruntime`, `agentobservability` and `agentbuilder` (the builder's workflows since 26 October 2026). Neon project `synthetic-data-pipeline` (to be created): branch `production` is datasource `tripleq_synth`; branch `dev` is datasource `tripleq_synth_dev` |
 | Configuration | `postgresqlmodule/code/config/pgfoundation.lambda.yaml` |
 
 - **Deployment files:** `deploy/aws-lambda/` (Dockerfile, `deploy.sh`, README).

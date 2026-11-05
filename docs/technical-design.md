@@ -18,6 +18,7 @@ flowchart LR
   subgraph callers["Callers: HTTPS + Bearer caller key"]
     B["zonic-agent-builder<br/>ZonicAgentBuilderServer_FastAPI"]
     R["zonic-agent-runtime<br/>ZonicAgentRuntimeBackend_Python_LangGraph"]
+    S["zonic-synthetic-pipeline<br/>ZonicSyntheticDataPipeline_Fullstack"]
   end
   subgraph gw["pgfoundation_api: FastAPI shell"]
     MW["Middleware<br/>X-Request-Id, request deadline, timing"]
@@ -33,13 +34,14 @@ flowchart LR
   subgraph neon["Neon PostgreSQL"]
     N1["Project agent-build-run<br/>branch production: neondb<br/>branch dev: neondb_dev"]
     N2["Project agent-build-langgraph, branch production<br/>agentruntime, agentobservability, agentbuilder"]
+    N3["Project synthetic-data-pipeline<br/>branch production: tripleq_synth<br/>branch dev: tripleq_synth_dev"]
   end
-  B & R --> MW
+  B & R & S --> MW
   MW --> AG --> RT
   RT --> AL --> FA
   RT --> FA
   FA --> CP --> PS
-  PS --> N1 & N2
+  PS --> N1 & N2 & N3
 ```
 
 Four [Import Linter](../postgresqlmodule/code/.importlinter) contracts enforce the
@@ -176,6 +178,7 @@ request ([05 — Configuration](../documentations/05-configuration.md)).
 | `zonic-agent-builder` | `agentbuilder`, `neondb`, `neondb_dev` | read, write |
 | `zonic-agent-runtime` | `agentruntime`, `agentobservability`, `batch` | read, write |
 | `zonic-agent-runtime-node` (the earlier Node runtime) | `neondb_dev`, `batch` | read, write |
+| `zonic-synthetic-pipeline` (ZonicSyntheticDataPipeline_Fullstack) | `tripleq_synth`, `tripleq_synth_dev`, `batch` | read, write |
 
 How a request is authorized ([ADR-008](../documentations/adr/ADR-008-auth-boundary.md)):
 

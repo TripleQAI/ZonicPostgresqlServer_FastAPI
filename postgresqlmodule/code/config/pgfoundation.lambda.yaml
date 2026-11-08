@@ -9,8 +9,8 @@
 # 10 x pool.max_size = 30 connections per datasource. neondb and neondb_dev are
 # separate Neon branches with their own computes, so each sees at most 30;
 # agentruntime, agentobservability and agentbuilder share one compute, which sees
-# at most 90; tripleq_synth_dev is the dev branch of project ui-template-core, its own
-# compute, so it sees at most 30 (60 once the template platform's datasources join it). All are inside a Neon free-plan
+# at most 90; tripleq_synth_dev and tripleq_ui_dev share the dev branch of project
+# ui-template-core, its own compute, so it sees at most 60. All are inside a Neon free-plan
 # compute's connection limit; lower a max_size before adding another datasource on a compute.
 
 datasources:
@@ -95,6 +95,18 @@ datasources:
     pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
     stream: { itersize: 5000 }
 
+  # --- tripleq_ui_dev: the Generative UI template platform ------------------------
+  # Same Neon project and branch `dev` as tripleq_synth_dev, schema `tripleq_ai_ui`
+  # (ZonicGenerativeUI_FullStack). The DSN logs in as the platform's own application
+  # role, tripleq_ai_ui_app, which can only read its views and execute its procedures,
+  # never the pipeline's tripleq_synth schema. Same tuning as above.
+  - name: tripleq_ui_dev
+    dsn: ${env:PGF_TRIPLEQ_UI_DEV_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 0, max_size: 3, acquire_timeout_seconds: 10, max_idle_seconds: 240, max_lifetime_seconds: 1800, check_on_checkout: true }
+    stream: { itersize: 5000 }
+
 resilience:
   retry: { max_attempts: 3, base_backoff_ms: 20, max_backoff_ms: 1000, jitter: true }
   circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
@@ -147,6 +159,12 @@ auth:
       # lease in one transactional batch); each item must still pass this rule's datasources.
       - subject: zonic-synthetic-pipeline
         datasources: [tripleq_synth_dev, batch]
+        actions: [read, write]
+      # The Generative UI template platform (ZonicGenerativeUI_FullStack: API and
+      # workers) reads views and calls procedures in its own schema only. `batch`
+      # admits /v1/batch; each item must still pass this rule's datasources.
+      - subject: zonic-generative-ui
+        datasources: [tripleq_ui_dev, batch]
         actions: [read, write]
 
 api:

@@ -21,10 +21,12 @@
 #     PGF_AGENTOBSERVABILITY_DSN        datasource agentobservability; defaults to PGF_AGENTRUNTIME_DSN
 #     PGF_AGENTBUILDER_DSN              datasource agentbuilder (the builder's workflows); defaults to PGF_AGENTRUNTIME_DSN
 #     PGF_TRIPLEQ_SYNTH_DEV_DSN         datasource tripleq_synth_dev (synthetic data pipeline, branch dev)
+#     PGF_TRIPLEQ_UI_DEV_DSN            datasource tripleq_ui_dev (Generative UI template platform, branch dev)
 #     PGF_API_KEY_ZONIC_AGENT_BUILDER   caller key
 #     PGF_API_KEY_ZONIC_AGENT_RUNTIME   caller key
 #     PGF_API_KEY_ZONIC_AGENT_RUNTIME_NODE  caller key (the Node runtime, ZonicAgentRuntimeServer_Nodejs)
 #     PGF_API_KEY_ZONIC_SYNTHETIC_PIPELINE  caller key (ZonicSyntheticDataPipeline_Fullstack)
+#     PGF_API_KEY_ZONIC_GENERATIVE_UI   caller key (ZonicGenerativeUI_FullStack)
 #   Fallback files (both gitignored by `.env` / `.env.*`):
 #     .env          the DSNs
 #     .env.lambda   the caller keys; a missing key is generated
@@ -55,6 +57,7 @@ API_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_BUILDER
 RUNTIME_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_RUNTIME
 NODE_RUNTIME_KEY_VAR=PGF_API_KEY_ZONIC_AGENT_RUNTIME_NODE
 SYNTH_KEY_VAR=PGF_API_KEY_ZONIC_SYNTHETIC_PIPELINE
+UI_KEY_VAR=PGF_API_KEY_ZONIC_GENERATIVE_UI
 SECRET_ID="${SECRET_ID:-zonic-postgresql-server/runtime}"
 SECRET_REGION="${SECRET_REGION:-${AWS_REGION:-us-east-1}}"
 PY="$(command -v python3 || command -v python)"
@@ -123,7 +126,13 @@ if [ -z "$SYNTH_DEV_DSN" ]; then
   echo "PGF_TRIPLEQ_SYNTH_DEV_DSN is missing from secret $SECRET_ID and from $ROOT/.env (Neon project ui-template-core, branch dev, datasource tripleq_synth_dev)" >&2
   exit 1
 fi
-for dsn in "$NEON_DSN" "$NEON_DEV_DSN" "$RUNTIME_DSN" "$OBSERVABILITY_DSN" "$BUILDER_DSN" "$SYNTH_DEV_DSN"; do
+# Datasource tripleq_ui_dev: Neon project ui-template-core, branch dev, schema tripleq_ai_ui.
+UI_DEV_DSN="$(get_var "$ROOT/.env" PGF_TRIPLEQ_UI_DEV_DSN)"
+if [ -z "$UI_DEV_DSN" ]; then
+  echo "PGF_TRIPLEQ_UI_DEV_DSN is missing from secret $SECRET_ID and from $ROOT/.env (Neon project ui-template-core, branch dev, datasource tripleq_ui_dev)" >&2
+  exit 1
+fi
+for dsn in "$NEON_DSN" "$NEON_DEV_DSN" "$RUNTIME_DSN" "$OBSERVABILITY_DSN" "$BUILDER_DSN" "$SYNTH_DEV_DSN" "$UI_DEV_DSN"; do
   case "$dsn" in
     *-pooler.*) echo "warning: a DSN uses Neon's pooled endpoint; the direct endpoint is recommended" >&2 ;;
   esac
@@ -153,16 +162,18 @@ API_KEY="$(caller_key "$API_KEY_VAR")"
 RUNTIME_KEY="$(caller_key "$RUNTIME_KEY_VAR")"
 NODE_RUNTIME_KEY="$(caller_key "$NODE_RUNTIME_KEY_VAR")"
 SYNTH_KEY="$(caller_key "$SYNTH_KEY_VAR")"
+UI_KEY="$(caller_key "$UI_KEY_VAR")"
 
 # Every value the function receives, as one JSON object (also the secret's content).
-export NEON_DSN NEON_DEV_DSN RUNTIME_DSN OBSERVABILITY_DSN BUILDER_DSN SYNTH_DEV_DSN API_KEY API_KEY_VAR RUNTIME_KEY RUNTIME_KEY_VAR NODE_RUNTIME_KEY NODE_RUNTIME_KEY_VAR SYNTH_KEY SYNTH_KEY_VAR
+export NEON_DSN NEON_DEV_DSN RUNTIME_DSN OBSERVABILITY_DSN BUILDER_DSN SYNTH_DEV_DSN UI_DEV_DSN API_KEY API_KEY_VAR RUNTIME_KEY RUNTIME_KEY_VAR NODE_RUNTIME_KEY NODE_RUNTIME_KEY_VAR SYNTH_KEY SYNTH_KEY_VAR UI_KEY UI_KEY_VAR
 VALUES_JSON="$("$PY" -c 'import json, os; e = os.environ; print(json.dumps({
   "PGF_NEON_DSN": e["NEON_DSN"], "PGF_NEON_DEV_DSN": e["NEON_DEV_DSN"],
   "PGF_AGENTRUNTIME_DSN": e["RUNTIME_DSN"], "PGF_AGENTOBSERVABILITY_DSN": e["OBSERVABILITY_DSN"],
   "PGF_AGENTBUILDER_DSN": e["BUILDER_DSN"],
-  "PGF_TRIPLEQ_SYNTH_DEV_DSN": e["SYNTH_DEV_DSN"],
+  "PGF_TRIPLEQ_SYNTH_DEV_DSN": e["SYNTH_DEV_DSN"], "PGF_TRIPLEQ_UI_DEV_DSN": e["UI_DEV_DSN"],
   e["API_KEY_VAR"]: e["API_KEY"], e["RUNTIME_KEY_VAR"]: e["RUNTIME_KEY"],
-  e["NODE_RUNTIME_KEY_VAR"]: e["NODE_RUNTIME_KEY"], e["SYNTH_KEY_VAR"]: e["SYNTH_KEY"]}))')"
+  e["NODE_RUNTIME_KEY_VAR"]: e["NODE_RUNTIME_KEY"], e["SYNTH_KEY_VAR"]: e["SYNTH_KEY"],
+  e["UI_KEY_VAR"]: e["UI_KEY"]}))')"
 
 # Create the secret on first use, or merge in values it does not hold yet.
 SECRET_FILE="$(mktemp)"
@@ -288,8 +299,8 @@ cat <<EOF
 Endpoint:    $BASE
 Datasources: neondb (production branch), neondb_dev (branch dev),
              agentruntime, agentobservability and agentbuilder (Agent Runtime database),
-             tripleq_synth_dev (synthetic data pipeline)
+             tripleq_synth_dev (synthetic data pipeline), tripleq_ui_dev (template platform)
 Caller keys: secret $SECRET_ID ($API_KEY_VAR, $RUNTIME_KEY_VAR,
-             $NODE_RUNTIME_KEY_VAR, $SYNTH_KEY_VAR), copies in $ROOT/.env.lambda
+             $NODE_RUNTIME_KEY_VAR, $SYNTH_KEY_VAR, $UI_KEY_VAR), copies in $ROOT/.env.lambda
 Call with:   Authorization: Bearer <key>
 EOF

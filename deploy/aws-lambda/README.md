@@ -18,7 +18,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
 |---|---|
 | `Dockerfile` | Service image plus the AWS Lambda Web Adapter 0.9.1; runtime dependencies only |
 | `deploy.sh` | Idempotent deployment: ECR repository, image build and push, IAM role, function, Function URL, smoke test |
-| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb`, `neondb_dev`, `agentruntime`, `agentobservability`, `agentbuilder` and `tripleq_synth_dev` datasources, token auth, small pools |
+| `../../postgresqlmodule/code/config/pgfoundation.lambda.yaml` | Gateway configuration for Lambda: `neondb`, `neondb_dev`, `agentruntime`, `agentobservability`, `agentbuilder`, `tripleq_synth_dev` and `tripleq_ui_dev` datasources, token auth, small pools |
 
 ## Cost
 
@@ -60,6 +60,7 @@ client ──HTTPS──► Lambda Function URL ──► Lambda (arm64, 512 MB)
   | `neondb_dev` | `dev` | Development, the builder's live test suite, and the Node runtime (`zonic-agent-runtime-node`: `agent_builder`, `agent_runtime`, `agent_observability`) |
   | `agentruntime`, `agentobservability` | `production` of project `agent-build-langgraph` | The Agent Runtime's schemas (`agent_runtime`, `agent_observability`, and its copy of `agent_builder`) |
   | `tripleq_synth_dev` | `dev` of project `ui-template-core` | The synthetic data pipeline's metadata (schema `tripleq_synth`); caller `zonic-synthetic-pipeline` only. Its `production` datasource `tripleq_synth` is added once the schema is applied there |
+  | `tripleq_ui_dev` | `dev` of project `ui-template-core` | The Generative UI template platform (schema `tripleq_ai_ui`, role `tripleq_ai_ui_app`); caller `zonic-generative-ui` only, key `PGF_API_KEY_ZONIC_GENERATIVE_UI` |
 
   Both branches use Neon's default database `neondb`. The datasource names are only
   labels in `pgfoundation.lambda.yaml`; each DSN decides which branch is used.

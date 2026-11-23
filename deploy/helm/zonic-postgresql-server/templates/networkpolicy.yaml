@@ -44,4 +44,12 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    # Neon (zdp_config) -- also public over the NAT gateway, and on 5432 rather
+    # than 443. Neon's endpoint IPs are not ours either, hence 0.0.0.0/0.
+    - to:
+        - ipBlock:
+            cidr: "0.0.0.0/0"
+      ports:
+        - protocol: TCP
+          port: 5432
 {{- end }}

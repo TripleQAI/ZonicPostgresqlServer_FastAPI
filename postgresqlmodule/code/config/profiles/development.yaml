@@ -3,14 +3,27 @@
 # ("never use for anything reachable from outside") — this one is reachable by other
 # services inside the VPC, so it can't inherit that profile's permissiveness.
 #
-# auth is ENABLED as of 2026-09-12, closing doc 14 §14.5's standing constraint
+# auth was ENABLED on 2026-09-12, closing doc 14 §14.5's standing constraint
 # ("do not onboard a second consuming API until the deployment carries real caller
-# identity"). The Authorization Server is that second consumer, so the constraint
-# came due. provider: token, never mtls — §12.8: mtls behind a plain,
+# identity"). provider: token, never mtls — §12.8: mtls behind a plain,
 # Ingress-created ALB trusts a client-supplied header the ALB does not strip.
+#
+# DISABLED again on 2026-11-23, by explicit owner decision, so the data pipeline
+# can call without a caller key. What that means, stated plainly: every request
+# is `anonymous` and may read and write EVERY data source below -- zdp_config AND
+# tsdb, which holds the Authorization Server's users, user_credentials and
+# oauth_clients -- from anywhere that can reach pgfoundation.dev.tripleq.ai,
+# which is internet-facing behind only the WAF (values-development.yaml). Raw SQL
+# stays off (api.enable_raw_sql below), so access is still name-based only.
+#
+# To re-enable: set `enabled: true`, restore secret.callerKeys in
+# values-development.yaml, and issue the zonic-datapipeline-service key
+# (ZonicPlatformInfrastructure scripts/rotate-pgfoundation-caller-key.ps1). The
+# provider and policy below are kept, unread while disabled, so that is the
+# whole change.
 
 auth:
-  enabled: true
+  enabled: false
 
   # SharedSecretAuthenticator: a per-caller key, compared as a SHA-256 digest in
   # constant time (security/providers.py). Keys live in Secrets Manager, one per
@@ -41,11 +54,20 @@ auth:
         datasources: [tsdb]
         actions: [read, write]
 
+      # ZonicDataPipelineService_FastAPI persists Build Canvas drafts, layouts
+      # and publishes. It reads the pipeline/pipeline_draft tables and the
+      # workflow status view through /view, and writes only through the three
+      # sp_* procedures from the pipeline server's migration 005 -- /procedure
+      # calls, which the authorizer classes as `write`. zdp_config only: it has
+      # no business in the Authorization Server's tsdb data.
+      - subject: zonic-datapipeline-service
+        datasources: [zdp_config]
+        actions: [read, write]
+
 api:
-  # Off now that auth is on. /docs on an authenticated service is not a
-  # vulnerability, but it is a free map of the surface for anyone probing the
-  # endpoint, and the OpenAPI snapshot in this repo serves the same purpose for
-  # engineers who need it.
+  # Off. /docs is a free map of the surface for anyone probing the endpoint --
+  # more so with auth disabled -- and the OpenAPI snapshot in this repo serves
+  # the same purpose for engineers who need it.
   docs_enabled: false
   enable_raw_sql: false     # never ships past local dev, regardless of auth state
 

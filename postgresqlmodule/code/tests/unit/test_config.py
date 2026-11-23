@@ -62,6 +62,46 @@ def test_unresolved_reference_fails_fast():
         load_settings({"datasources": [{"name": "o", "dsn": "${env:NOPE_MISSING}"}]})
 
 
+def _secret_cfg():
+    return {"datasources": [{"name": "o", "dsn": "${secret:ORDERS_DSN}"}]}
+
+
+def test_secret_reads_the_mounted_file_when_env_is_unset(monkeypatch, tmp_path):
+    """The deployed path: the CSI driver mounts the DSN as a file, and a key new
+    to the synced Kubernetes Secret would race the container's secretKeyRef."""
+    monkeypatch.delenv("ORDERS_DSN", raising=False)
+    monkeypatch.setenv("PGF_SECRETS_MOUNT_PATH", str(tmp_path))
+    (tmp_path / "ORDERS_DSN").write_text("postgresql://mounted/orders\n", encoding="utf-8")
+    s = load_settings(_secret_cfg())
+    assert s.datasources[0].dsn.get_secret_value() == "postgresql://mounted/orders"
+
+
+def test_secret_prefers_env_over_the_mounted_file(monkeypatch, tmp_path):
+    """The local path: .env supplies the value, and an explicit injection wins."""
+    monkeypatch.setenv("ORDERS_DSN", "postgresql://env/orders")
+    monkeypatch.setenv("PGF_SECRETS_MOUNT_PATH", str(tmp_path))
+    (tmp_path / "ORDERS_DSN").write_text("postgresql://mounted/orders", encoding="utf-8")
+    s = load_settings(_secret_cfg())
+    assert s.datasources[0].dsn.get_secret_value() == "postgresql://env/orders"
+
+
+def test_secret_with_no_env_and_no_file_fails_fast(monkeypatch, tmp_path):
+    monkeypatch.delenv("ORDERS_DSN", raising=False)
+    monkeypatch.setenv("PGF_SECRETS_MOUNT_PATH", str(tmp_path))
+    with pytest.raises(ConfigError, match="unresolved config reference"):
+        load_settings(_secret_cfg())
+
+
+def test_secret_name_cannot_walk_out_of_the_mount(monkeypatch, tmp_path):
+    """A flat name only, so a config value cannot read an arbitrary file."""
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    (tmp_path / "outside").write_text("postgresql://leak/x", encoding="utf-8")
+    monkeypatch.setenv("PGF_SECRETS_MOUNT_PATH", str(mount))
+    with pytest.raises(ConfigError, match="unresolved config reference"):
+        load_settings({"datasources": [{"name": "o", "dsn": "${secret:../outside}"}]})
+
+
 def test_session_timeout_sql_inlines_the_value():
     """`SET` is a utility statement: PostgreSQL rejects bound parameters for it.
 

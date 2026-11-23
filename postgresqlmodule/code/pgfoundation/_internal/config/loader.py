@@ -2,6 +2,13 @@
 
 Phase 0 supports dict, YAML file, and env-var interpolation. Secret-manager
 providers plug in later behind the same seam (Chain of Responsibility).
+
+``${secret:NAME}`` resolves from the environment first, then from a file named
+``NAME`` under ``PGF_SECRETS_MOUNT_PATH`` (default ``/mnt/secrets-store``, the
+CSI mount). The file leg exists for the reason caller keys are read from files
+(bootstrap/providers.py): a key new to the CSI-synced Kubernetes Secret races
+the container's ``secretKeyRef`` on its first deploy and loses, while the
+mounted file is guaranteed present before the container starts.
 """
 from __future__ import annotations
 
@@ -15,17 +22,34 @@ from .settings import AppSettings
 
 _INTERP = re.compile(r"\$\{(env|secret):([^}]+)\}")
 
+SECRETS_MOUNT_PATH = "/mnt/secrets-store"
+
+
+def _read_mounted_secret(name: str) -> str | None:
+    # A flat name only: the CSI driver's objectAlias is flat, and a name with a
+    # separator would let a config value read any file the process can.
+    if not name or "/" in name or "\\" in name or name in (".", ".."):
+        return None
+    mount = Path(os.environ.get("PGF_SECRETS_MOUNT_PATH", SECRETS_MOUNT_PATH))
+    try:
+        value = (mount / name).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value or None
+
 
 def _resolve_scalar(value: str) -> str:
-    """Resolve ``${env:NAME}`` (and ``${secret:...}`` via env fallback for now)."""
+    """Resolve ``${env:NAME}``, and ``${secret:NAME}`` from env then the mount."""
 
     def repl(m: re.Match[str]) -> str:
         kind, name = m.group(1), m.group(2).strip()
         if kind == "env":
             resolved = os.environ.get(name)
-        else:  # secret: — Phase 0 falls back to env; real resolvers plug in later
-            resolved = os.environ.get(name) or os.environ.get(
-                name.replace("/", "_").upper()
+        else:  # secret: — env first, then the CSI-mounted file
+            resolved = (
+                os.environ.get(name)
+                or os.environ.get(name.replace("/", "_").upper())
+                or _read_mounted_secret(name)
             )
         if resolved is None:
             raise ConfigError(f"unresolved config reference: ${{{kind}:{name}}}")

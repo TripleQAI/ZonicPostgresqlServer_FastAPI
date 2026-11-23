@@ -8,8 +8,8 @@
   // Nothing is pip-installed from this repo itself — the entry points put
   // postgresqlmodule/code on sys.path themselves.
   //
-  // DATABASE CREDENTIALS: config/pgfoundation.yaml holds a `${env:PGF_TSDB_DSN}`
-  // reference, never a DSN. Put yours in a gitignored `.env` at the repo root
+  // DATABASE CREDENTIALS: config/pgfoundation.yaml holds `${secret:PGF_TSDB_DSN}`
+  // and `${secret:PGF_ZDP_CONFIG_DSN}` references, never a DSN. Put yours in a gitignored `.env` at the repo root
   // (copy `.env.example`); every config below loads it via `envFile`. This is the
   // same rule production follows — the file names the source, the environment
   // supplies the secret (doc 12 §12.2).

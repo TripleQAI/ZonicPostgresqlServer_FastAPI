@@ -1,11 +1,16 @@
 # pgfoundation — LOCAL config.
 #
-# Structure and tunables only. NO SECRETS: every dsn is a ${env:...} reference
-# the loader resolves at startup (documentations/12-deployment-targets.md §12.2).
-# Put the values in a gitignored .env; `python check_dsn.py` validates them.
+# Structure and tunables only. NO SECRETS: every dsn is a ${env:...} or
+# ${secret:...} reference the loader resolves at startup
+# (documentations/12-deployment-targets.md §12.2). Put the values in a gitignored
+# .env; `python check_dsn.py` validates them.
 
 datasources:
   # --- tsdb: Tiger Cloud service `tripleq-development` (AWS us-east-1) -------
+  # PAUSED as of 2026-11: the data pipeline moved to Neon (zdp_config below).
+  # Kept because zonic-authorization-server's user_schema still lives here; while
+  # it is paused this source reports down, the service reports `degraded` rather
+  # than `down`, and /ready stays 200 on the strength of zdp_config.
   # The alias IS the database name. A generic alias like `main` says nothing
   # about what it points at, and silently changes meaning when it is repointed —
   # a saved `/v1/datasources/main/view` request kept working while the database
@@ -20,10 +25,39 @@ datasources:
   #                   spurious failures against a cloud endpoint (§12.6).
   #   * itersize 5000 — fewer, larger fetches across a WAN.
   - name: tsdb
-    dsn: ${env:PGF_TSDB_DSN}
+    dsn: ${secret:PGF_TSDB_DSN}   # env locally; a mounted file when deployed (development)
     role: standalone
     statement_timeout_ms: 30000
     pool: { min_size: 2, max_size: 10, acquire_timeout_seconds: 10, max_lifetime_seconds: 1800 }
+    stream: { itersize: 5000 }
+
+  # --- zdp_config: Neon project `zonic-data-pipeline` (aws-us-east-1) --------
+  # The data pipeline's Config database (schema data_ingestion_workflow_config),
+  # installed from ZonicDatapipelineServer_FastAPI's sql/config. The alias is the
+  # database name, per the rule above. Its caller is
+  # ZonicDataPipelineService_FastAPI (profiles/development.yaml).
+  #
+  # Connects as `pgfoundation_zdp_config`, a LOGIN role whose only privilege is
+  # membership in zdp_config_rw -- never the database owner. Direct endpoint,
+  # never the `-pooler` host: _configure issues a session-level SET, which
+  # Neon's transaction-mode PgBouncer does not keep.
+  #
+  # `${secret:...}`, not `${env:...}`: deployed, the value is a CSI-mounted file
+  # (loader.py's docstring says why); locally, .env supplies it as an env var.
+  #
+  # Neon scales an idle compute to zero and closes every connection, so:
+  #   * check_on_checkout true -- without it the first request after a suspend
+  #     is handed a dead pooled connection and fails with 57P01 ("terminating
+  #     connection due to administrator command"). Reproduced by forcing a
+  #     suspend through the Neon API, 2026-11-23; with the check on, that
+  #     request reconnects instead. Costs one round trip per checkout.
+  #   * min_size 1, not tsdb's 2 -- warm connections do not survive a suspend,
+  #     and acquire_timeout 10s covers the compute's cold start.
+  - name: zdp_config
+    dsn: ${secret:PGF_ZDP_CONFIG_DSN}
+    role: standalone
+    statement_timeout_ms: 30000
+    pool: { min_size: 1, max_size: 10, acquire_timeout_seconds: 10, max_lifetime_seconds: 1800, check_on_checkout: true }
     stream: { itersize: 5000 }
 
   # --- Optional: the local Docker instance (migration source) ----------------
@@ -44,14 +78,15 @@ resilience:
   circuit_breaker: { enabled: true, failure_threshold: 5, reset_timeout_seconds: 30 }
 
 concurrency:
-  # Must stay within Σ(pool.max_size) = 10, or the limiter would admit work the
-  # pools cannot hold and a fast 503 would degrade into a slow pool timeout
-  # (doc 05 §5.5). Raise both together if you enable the second data source.
+  # Must stay within Σ(pool.max_size) = 20 (tsdb 10 + zdp_config 10), or the
+  # limiter would admit work the pools cannot hold and a fast 503 would degrade
+  # into a slow pool timeout (doc 05 §5.5). Raise both together if you add a
+  # data source.
   #
   # Also check against the instance's connection limit: this is
-  # `workers × Σ pool.max_size`, so 4 uvicorn workers means 40 connections, not
-  # 10 (§12.4).
-  max_inflight_total: 10
+  # `workers × Σ pool.max_size` per replica, so 4 uvicorn workers means 80
+  # connections, not 20 (§12.4).
+  max_inflight_total: 20
   max_inflight_per_datasource: 10
   admission_timeout_ms: 2000
 

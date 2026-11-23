@@ -14,10 +14,6 @@ env:
 
 secret:
   dsnSecretName: tripleq/production/tiger-cloud-database-url
-  # Before any production deploy: config/pgfoundation.yaml now also declares
-  # zdp_config as ${secret:PGF_ZDP_CONFIG_DSN}, and an unresolved reference
-  # stops startup -- move to datasourceDsnsSecretName/datasourceDsns, as
-  # values-development.yaml did.
 
 ingress:
   host: "internal-pgfoundation.prod.tripleq.ai"

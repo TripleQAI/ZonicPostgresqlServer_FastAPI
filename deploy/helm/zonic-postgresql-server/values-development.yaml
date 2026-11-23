@@ -10,7 +10,23 @@ env:
   # Authorization Server is the real caller doc 14 §14.5 was waiting for.
 
 secret:
-  dsnSecretName: tripleq/development/tiger-cloud-database-url
+  # Moved to datasourceDsns below (2026-11), so one mount carries every DSN.
+  # The old tripleq/development/tiger-cloud-database-url secret is no longer
+  # mounted; its value was copied into the tsdb field.
+  dsnSecretName: ""
+
+  # Every data source's DSN, one JSON secret (values.yaml's comment). The
+  # container is created by the infra repo; the VALUE is set out of band:
+  #   tsdb       -- Tiger Cloud, PAUSED 2026-11. Reports down until it resumes
+  #                 or zonic-authorization-server's data moves.
+  #   zdp_config -- Neon project zonic-data-pipeline, the pgfoundation_zdp_config
+  #                 role on the direct (non -pooler) host.
+  datasourceDsnsSecretName: pgfoundation/datasource-dsns
+  datasourceDsns:
+    - datasource: tsdb
+      alias: PGF_TSDB_DSN
+    - datasource: zdp_config
+      alias: PGF_ZDP_CONFIG_DSN
 
   # Must match auth.policy.callers in config/profiles/development.yaml. The
   # service refuses to start on a policy subject with no key here, so the two
@@ -23,6 +39,7 @@ secret:
   callerKeysSecretName: pgfoundation/caller-keys
   callerKeys:
     - subject: zonic-authorization-server
+    - subject: zonic-datapipeline-service
 
 ingress:
   # Internet-facing as of 2026-08-27 — explicit, deliberate exception for ad-hoc

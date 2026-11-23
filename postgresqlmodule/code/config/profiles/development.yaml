@@ -41,6 +41,16 @@ auth:
         datasources: [tsdb]
         actions: [read, write]
 
+      # ZonicDataPipelineService_FastAPI persists Build Canvas drafts, layouts
+      # and publishes. It reads the pipeline/pipeline_draft tables and the
+      # workflow status view through /view, and writes only through the three
+      # sp_* procedures from the pipeline server's migration 005 -- /procedure
+      # calls, which the authorizer classes as `write`. zdp_config only: it has
+      # no business in the Authorization Server's tsdb data.
+      - subject: zonic-datapipeline-service
+        datasources: [zdp_config]
+        actions: [read, write]
+
 api:
   # Off now that auth is on. /docs on an authenticated service is not a
   # vulnerability, but it is a free map of the surface for anyone probing the

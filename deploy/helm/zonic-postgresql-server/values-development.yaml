@@ -6,42 +6,23 @@ image:
 
 env:
   PGF_PROFILE: development
-  # config/profiles/development.yaml — auth was ON from 2026-09-12 and is OFF
-  # again as of 2026-11-23 (owner decision; that profile says what it exposes).
+  # config/profiles/development.yaml — auth is ON as of 2026-09-12; the
+  # Authorization Server is the real caller doc 14 §14.5 was waiting for.
 
 secret:
-  # Moved to datasourceDsns below (2026-11), so one mount carries every DSN.
-  # The old tripleq/development/tiger-cloud-database-url secret is no longer
-  # mounted; its value was copied into the tsdb field.
-  dsnSecretName: ""
+  dsnSecretName: tripleq/development/tiger-cloud-database-url
 
-  # Every data source's DSN, one JSON secret (values.yaml's comment). The
-  # container is created by the infra repo; the VALUE is set out of band:
-  #   tsdb       -- Tiger Cloud, PAUSED 2026-11. Reports down until it resumes
-  #                 or zonic-authorization-server's data moves.
-  #   zdp_config -- Neon project zonic-data-pipeline, the pgfoundation_zdp_config
-  #                 role on the direct (non -pooler) host.
-  datasourceDsnsSecretName: pgfoundation/datasource-dsns
-  datasourceDsns:
-    - datasource: tsdb
-      alias: PGF_TSDB_DSN
-    - datasource: zdp_config
-      alias: PGF_ZDP_CONFIG_DSN
-
-  # Not mounted while auth is disabled (config/profiles/development.yaml): a
-  # deployment with auth off must not require secrets that prove nothing
-  # (values.yaml), and a listed subject with no key in the secret would fail the
-  # CSI mount outright -- zonic-datapipeline-service was never issued one.
+  # Must match auth.policy.callers in config/profiles/development.yaml. The
+  # service refuses to start on a policy subject with no key here, so the two
+  # lists are checked against each other at startup rather than drifting.
   #
-  # To re-enable auth, restore this alongside `auth.enabled: true` -- it must
-  # match auth.policy.callers there, and each key must exist in the secret
-  # (ZonicPlatformInfrastructure scripts/rotate-pgfoundation-caller-key.ps1):
-  #   callerKeysSecretName: pgfoundation/caller-keys
-  #   callerKeys:
-  #     - subject: zonic-authorization-server
-  #     - subject: zonic-datapipeline-service
-  callerKeysSecretName: ""
-  callerKeys: []
+  # The container is created by the infra repo (environments/development/network's
+  # module.secrets_manager); the VALUE is generated separately by that repo's
+  # scripts/rotate-pgfoundation-caller-key.ps1, so no key is ever in Terraform
+  # state or in this file.
+  callerKeysSecretName: pgfoundation/caller-keys
+  callerKeys:
+    - subject: zonic-authorization-server
 
 ingress:
   # Internet-facing as of 2026-08-27 — explicit, deliberate exception for ad-hoc

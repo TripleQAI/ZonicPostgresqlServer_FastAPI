@@ -42,32 +42,6 @@ secret:
   region: us-east-1
   envVarName: PGF_TSDB_DSN
 
-  # Every data source's DSN in ONE Secrets Manager secret, a JSON object keyed
-  # by data-source name -- the caller-keys pattern below, for the same reason:
-  # each secret a pod mounts is a separate GetSecretValue, and a second one took
-  # this cluster's rollouts to an 8-minute timeout (infra repo,
-  # module.secrets_manager). A second data source therefore costs a JSON field,
-  # never another round trip:
-  #
-  #   {"tsdb": "postgresql://...", "zdp_config": "postgresql://..."}
-  #
-  # jmesPath splits it into one FILE per data source at
-  # /mnt/secrets-store/<alias>. Files, not a synced Secret + secretKeyRef: a key
-  # new to that Secret loses the race against the container start
-  # (deployment.yaml's caller-key comment). config/pgfoundation.yaml reads each
-  # as `${secret:<alias>}`, which falls back to the mounted file (loader.py), so
-  # `alias` must equal the name in that reference.
-  #
-  # When this is set, leave dsnSecretName empty: it is the older single-DSN
-  # path (one plain-string secret, synced and read via secretKeyRef), kept only
-  # for environments not yet moved -- values-production.yaml.
-  datasourceDsnsSecretName: ""
-  datasourceDsns: []
-  # datasourceDsnsSecretName: pgfoundation/datasource-dsns
-  # datasourceDsns:
-  #   - datasource: tsdb
-  #     alias: PGF_TSDB_DSN
-
   # Caller API keys (ADR-008 caller identity). ONE Secrets Manager secret whose
   # value is a JSON object keyed by caller subject:
   #

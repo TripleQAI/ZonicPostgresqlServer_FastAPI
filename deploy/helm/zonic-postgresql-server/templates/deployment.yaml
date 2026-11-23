@@ -51,19 +51,11 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
-            {{- if .Values.secret.dsnSecretName }}
             - name: {{ .Values.secret.envVarName }}
               valueFrom:
                 secretKeyRef:
                   name: zonic-postgresql-server-dsn
                   key: {{ .Values.secret.envVarName }}
-            {{- end }}
-            {{- if .Values.secret.datasourceDsnsSecretName }}
-            # DSNs from datasourceDsns are mounted FILES, not env vars, for the
-            # caller-key reason below; loader.py's ${secret:...} reads them here.
-            - name: PGF_SECRETS_MOUNT_PATH
-              value: /mnt/secrets-store
-            {{- end }}
             {{- if .Values.secret.callerKeys }}
             # Caller keys are NOT env vars, deliberately.
             #
